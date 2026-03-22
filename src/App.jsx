@@ -1,35 +1,68 @@
-import { Link, Route, Routes } from 'react-router-dom'
+import { Route, Routes, Navigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import Layout from './components/Layout'
 import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
 import Signup from './pages/Signup.jsx'
-import './App.css'
+import LandingPage from './pages/LandingPage.jsx'
+import DoctorSearch from './pages/DoctorSearch.jsx'
+import AISymptomChecker from './pages/AISymptomChecker.jsx'
+import VideoConsultation from './pages/VideoConsultation.jsx'
+import Payments from './pages/Payments.jsx'
 
 function App() {
-  return (
-    <>
-      <header className="app-header">
-        <Link className="brand" to="/">
-          Healthcare
-        </Link>
-        <nav className="nav">
-          <Link className="nav-link" to="/login">
-            Login
-          </Link>
-          <Link className="nav-link" to="/signup">
-            Sign up
-          </Link>
-        </nav>
-      </header>
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('auth_token'));
 
-      <main className="app-main">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="*" element={<Home />} />
-        </Routes>
-      </main>
-    </>
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setIsAuthenticated(!!localStorage.getItem('auth_token'));
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const checkAuth = () => setIsAuthenticated(!!localStorage.getItem('auth_token'));
+
+  return (
+    <Routes>
+      {/* Public Pages */}
+      <Route path="/" element={<LandingPage />} />
+      <Route 
+        path="/login" 
+        element={!isAuthenticated ? <Login onLogin={checkAuth} /> : <Navigate to="/dashboard" />} 
+      />
+      <Route 
+        path="/signup" 
+        element={!isAuthenticated ? <Signup onSignup={checkAuth} /> : <Navigate to="/dashboard" />} 
+      />
+
+      {/* Protected App Pages */}
+      <Route 
+        path="/dashboard/*" 
+        element={
+          isAuthenticated ? (
+            <Layout onLogout={checkAuth}>
+              <Routes>
+                <Route index element={<Home />} />
+                <Route path="doctors" element={<DoctorSearch />} />
+                <Route path="consultations" element={<VideoConsultation />} />
+                <Route path="ai-checker" element={<AISymptomChecker />} />
+                <Route path="payments" element={<Payments />} />
+                <Route path="appointments" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Appointments</h1><p className="text-[#808e9b] mt-4 font-bold">Manage your schedule here.</p></div>} />
+                <Route path="reports" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Medical Reports</h1><p className="text-[#808e9b] mt-4 font-bold">Access your health records.</p></div>} />
+                <Route path="management" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Admin Management</h1><p className="text-[#808e9b] mt-4 font-bold">User and Platform operations.</p></div>} />
+                <Route path="*" element={<Navigate to="/dashboard" />} />
+              </Routes>
+            </Layout>
+          ) : (
+            <Navigate to="/login" />
+          )
+        } 
+      />
+
+      {/* Fallback */}
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
   )
 }
 
