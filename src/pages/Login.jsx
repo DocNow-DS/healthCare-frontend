@@ -1,26 +1,63 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { httpJson } from '../lib/http';
+import { api } from '../config/api';
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // Default role logic for mock
-    let role = 'Patient';
-    if (email.startsWith('doctor')) role = 'Doctor';
-    if (email.startsWith('admin')) role = 'Admin';
+  const mapRolesToUiRole = (roles) => {
+    const upperRoles = Array.isArray(roles)
+      ? roles.map((r) => String(r).toUpperCase())
+      : [];
 
-    localStorage.setItem('auth_token', 'mock_token');
-    localStorage.setItem('auth_user', JSON.stringify({ 
-      username: email.split('@')[0], 
-      role: role 
-    }));
-    
-    if (onLogin) onLogin();
-    navigate('/dashboard');
+    if (upperRoles.includes('ADMIN')) return 'Admin';
+    if (upperRoles.includes('DOCTOR')) return 'Doctor';
+    return 'Patient';
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setIsSubmitting(true);
+    try {
+      const result = await httpJson(`${api.authBase}/login`, {
+        method: 'POST',
+        body: {
+          email,
+          password,
+        },
+      });
+
+      const token = result?.token;
+      const user = result?.user;
+      const role = mapRolesToUiRole(user?.roles);
+
+      if (typeof token !== 'string' || token.length === 0) {
+        throw new Error('Login failed: missing token');
+      }
+
+      localStorage.setItem('auth_token', token);
+      localStorage.setItem(
+        'auth_user',
+        JSON.stringify({
+          ...(user ?? {}),
+          username: user?.username ?? email.split('@')[0],
+          role,
+        })
+      );
+
+      if (onLogin) onLogin();
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err?.message || 'Login failed');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -49,7 +86,7 @@ export default function Login({ onLogin }) {
               <input
                 type="email"
                 required
-                placeholder="Hint: start with doctor@ or admin@ for roles"
+                placeholder="Email address"
                 className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -81,10 +118,16 @@ export default function Login({ onLogin }) {
             </div>
 
             <div>
-              <button type="submit" className="btn-primary w-full py-4 text-[10px]">
-                Sign In
+              <button type="submit" className="btn-primary w-full py-4 text-[10px]" disabled={isSubmitting}>
+                {isSubmitting ? 'Signing In…' : 'Sign In'}
               </button>
             </div>
+
+            {error ? (
+              <div className="text-center text-[10px] font-black text-[#eb2f06] uppercase tracking-widest">
+                {error}
+              </div>
+            ) : null}
           </form>
 
           <div className="mt-8 pt-8 border-t-2 border-slate-50 text-center">
