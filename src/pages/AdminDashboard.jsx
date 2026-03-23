@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { API } from '../config/api';
+import AdminPatients from './AdminPatients.jsx';
+import AdminDoctors from './AdminDoctors.jsx';
 import { 
   UserGroupIcon, 
   UserIcon,
@@ -12,10 +14,12 @@ import {
   PlusCircleIcon,
   EyeIcon,
   Cog6ToothIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  Squares2X2Icon
 } from '@heroicons/react/24/outline';
 
 export default function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState('overview');
   const [stats, setStats] = useState({
     totalDoctors: 0,
     totalPatients: 0,
@@ -152,6 +156,183 @@ export default function AdminDashboard() {
     );
   }
 
+  // Tab Navigation
+  const tabs = [
+    { id: 'overview', name: 'Overview', icon: Squares2X2Icon },
+    { id: 'doctors', name: 'Doctors', icon: UserIcon },
+    { id: 'patients', name: 'Patients', icon: UserGroupIcon },
+  ];
+
+  // Render different content based on active tab
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'doctors':
+        return <AdminDoctors />;
+      case 'patients':
+        return <AdminPatients />;
+      case 'overview':
+      default:
+        return (
+          <div className="space-y-8">
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <StatCard
+                title="Total Doctors"
+                value={stats.totalDoctors}
+                icon={UserIcon}
+                change="+12%"
+                changeType="increase"
+                color="bg-blue-500"
+              />
+              <StatCard
+                title="Total Patients"
+                value={stats.totalPatients}
+                icon={UserGroupIcon}
+                change="+8%"
+                changeType="increase"
+                color="bg-green-500"
+              />
+              <StatCard
+                title="Appointments"
+                value={stats.totalAppointments}
+                icon={CalendarIcon}
+                change="+15%"
+                changeType="increase"
+                color="bg-purple-500"
+              />
+              <StatCard
+                title="Revenue"
+                value={`$${stats.totalRevenue.toLocaleString()}`}
+                icon={CreditCardIcon}
+                change="+23%"
+                changeType="increase"
+                color="bg-orange-500"
+              />
+            </div>
+
+            {/* Quick Actions */}
+            <div>
+              <h2 className="text-2xl font-black text-[#182C61] mb-6">Quick Actions</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <QuickAction
+                  title="Manage Doctors"
+                  description="Add, edit, or remove doctors"
+                  icon={UserIcon}
+                  href="/dashboard/doctors-management"
+                  color="bg-blue-500"
+                />
+                <QuickAction
+                  title="Manage Patients"
+                  description="View and manage patient records"
+                  icon={UserGroupIcon}
+                  href="/dashboard/patients-management"
+                  color="bg-green-500"
+                />
+                <QuickAction
+                  title="View Transactions"
+                  description="Monitor payment history"
+                  icon={CreditCardIcon}
+                  href="/dashboard/payments"
+                  color="bg-orange-500"
+                />
+                <QuickAction
+                  title="System Settings"
+                  description="Configure platform settings"
+                  icon={Cog6ToothIcon}
+                  href="/dashboard/settings"
+                  color="bg-gray-500"
+                />
+                <QuickAction
+                  title="Analytics"
+                  description="View detailed analytics"
+                  icon={ChartBarIcon}
+                  href="/dashboard/analytics"
+                  color="bg-purple-500"
+                />
+                <QuickAction
+                  title="Management Hub"
+                  description="Advanced management tools"
+                  icon={ShieldCheckIcon}
+                  href="/dashboard/management"
+                  color="bg-red-500"
+                />
+              </div>
+            </div>
+
+            {/* Recent Activity */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Recent Registrations */}
+              <div className="bg-white rounded-2xl border-2 border-slate-50 p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-black text-[#182C61]">Recent Registrations</h3>
+                  <Link
+                    to="/dashboard/patients-management"
+                    className="text-[#182C61] hover:text-[#182C61]/80 text-sm font-black"
+                  >
+                    View All
+                  </Link>
+                </div>
+                <div className="space-y-4">
+                  {stats.recentRegistrations.length > 0 ? (
+                    stats.recentRegistrations.map((registration) => (
+                      <div key={registration.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                        <div>
+                          <p className="font-black text-[#182C61]">{registration.name}</p>
+                          <p className="text-sm text-[#808e9b]">{registration.email}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-[#808e9b]">
+                            {new Date(registration.registrationDate).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-[#808e9b] text-center py-8">No recent registrations</p>
+                  )}
+                </div>
+              </div>
+
+              {/* System Status */}
+              <div className="bg-white rounded-2xl border-2 border-slate-50 p-6">
+                <h3 className="text-xl font-black text-[#182C61] mb-6">System Status</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
+                    <div className="flex items-center">
+                      <div className="h-3 w-3 bg-green-500 rounded-full mr-3"></div>
+                      <span className="font-black text-[#182C61]">Patient Service</span>
+                    </div>
+                    <span className="text-sm text-green-600 font-black">Operational</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
+                    <div className="flex items-center">
+                      <div className="h-3 w-3 bg-green-500 rounded-full mr-3"></div>
+                      <span className="font-black text-[#182C61]">Doctor Service</span>
+                    </div>
+                    <span className="text-sm text-green-600 font-black">Operational</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
+                    <div className="flex items-center">
+                      <div className="h-3 w-3 bg-yellow-500 rounded-full mr-3"></div>
+                      <span className="font-black text-[#182C61]">Appointment Service</span>
+                    </div>
+                    <span className="text-sm text-yellow-600 font-black">Maintenance</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
+                    <div className="flex items-center">
+                      <div className="h-3 w-3 bg-green-500 rounded-full mr-3"></div>
+                      <span className="font-black text-[#182C61]">Payment Service</span>
+                    </div>
+                    <span className="text-sm text-green-600 font-black">Operational</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -170,160 +351,33 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title="Total Doctors"
-          value={stats.totalDoctors}
-          icon={UserIcon}
-          change="+12%"
-          changeType="increase"
-          color="bg-blue-500"
-        />
-        <StatCard
-          title="Total Patients"
-          value={stats.totalPatients}
-          icon={UserGroupIcon}
-          change="+8%"
-          changeType="increase"
-          color="bg-green-500"
-        />
-        <StatCard
-          title="Appointments"
-          value={stats.totalAppointments}
-          icon={CalendarIcon}
-          change="+15%"
-          changeType="increase"
-          color="bg-purple-500"
-        />
-        <StatCard
-          title="Revenue"
-          value={`$${stats.totalRevenue.toLocaleString()}`}
-          icon={CreditCardIcon}
-          change="+23%"
-          changeType="increase"
-          color="bg-orange-500"
-        />
-      </div>
-
-      {/* Quick Actions */}
-      <div>
-        <h2 className="text-2xl font-black text-[#182C61] mb-6">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <QuickAction
-            title="Manage Doctors"
-            description="Add, edit, or remove doctors"
-            icon={UserIcon}
-            href="/dashboard/doctors-management"
-            color="bg-blue-500"
-          />
-          <QuickAction
-            title="Manage Patients"
-            description="View and manage patient records"
-            icon={UserGroupIcon}
-            href="/dashboard/patients-management"
-            color="bg-green-500"
-          />
-          <QuickAction
-            title="View Transactions"
-            description="Monitor payment history"
-            icon={CreditCardIcon}
-            href="/dashboard/payments"
-            color="bg-orange-500"
-          />
-          <QuickAction
-            title="System Settings"
-            description="Configure platform settings"
-            icon={Cog6ToothIcon}
-            href="/dashboard/settings"
-            color="bg-gray-500"
-          />
-          <QuickAction
-            title="Analytics"
-            description="View detailed analytics"
-            icon={ChartBarIcon}
-            href="/dashboard/analytics"
-            color="bg-purple-500"
-          />
-          <QuickAction
-            title="Management Hub"
-            description="Advanced management tools"
-            icon={ShieldCheckIcon}
-            href="/dashboard/management"
-            color="bg-red-500"
-          />
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Recent Registrations */}
-        <div className="bg-white rounded-2xl border-2 border-slate-50 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-black text-[#182C61]">Recent Registrations</h3>
-            <Link
-              to="/dashboard/patients-management"
-              className="text-[#182C61] hover:text-[#182C61]/80 text-sm font-black"
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`group inline-flex items-center py-4 px-1 border-b-2 font-black text-sm transition-colors ${
+                activeTab === tab.id
+                  ? 'border-[#182C61] text-[#182C61]'
+                  : 'border-transparent text-[#808e9b] hover:text-[#182C61] hover:border-gray-300'
+              }`}
             >
-              View All
-            </Link>
-          </div>
-          <div className="space-y-4">
-            {stats.recentRegistrations.length > 0 ? (
-              stats.recentRegistrations.map((registration) => (
-                <div key={registration.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                  <div>
-                    <p className="font-black text-[#182C61]">{registration.name}</p>
-                    <p className="text-sm text-[#808e9b]">{registration.email}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-[#808e9b]">
-                      {new Date(registration.registrationDate).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-[#808e9b] text-center py-8">No recent registrations</p>
-            )}
-          </div>
-        </div>
-
-        {/* System Status */}
-        <div className="bg-white rounded-2xl border-2 border-slate-50 p-6">
-          <h3 className="text-xl font-black text-[#182C61] mb-6">System Status</h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
-              <div className="flex items-center">
-                <div className="h-3 w-3 bg-green-500 rounded-full mr-3"></div>
-                <span className="font-black text-[#182C61]">Patient Service</span>
-              </div>
-              <span className="text-sm text-green-600 font-black">Operational</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
-              <div className="flex items-center">
-                <div className="h-3 w-3 bg-green-500 rounded-full mr-3"></div>
-                <span className="font-black text-[#182C61]">Doctor Service</span>
-              </div>
-              <span className="text-sm text-green-600 font-black">Operational</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
-              <div className="flex items-center">
-                <div className="h-3 w-3 bg-yellow-500 rounded-full mr-3"></div>
-                <span className="font-black text-[#182C61]">Appointment Service</span>
-              </div>
-              <span className="text-sm text-yellow-600 font-black">Maintenance</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
-              <div className="flex items-center">
-                <div className="h-3 w-3 bg-green-500 rounded-full mr-3"></div>
-                <span className="font-black text-[#182C61]">Payment Service</span>
-              </div>
-              <span className="text-sm text-green-600 font-black">Operational</span>
-            </div>
-          </div>
-        </div>
+              <tab.icon
+                className={`mr-2 h-5 w-5 ${
+                  activeTab === tab.id ? 'text-[#182C61]' : 'text-[#808e9b] group-hover:text-[#182C61]'
+                }`}
+                aria-hidden="true"
+              />
+              {tab.name}
+            </button>
+          ))}
+        </nav>
       </div>
+
+      {/* Tab Content */}
+      {renderTabContent()}
     </div>
   );
 }
