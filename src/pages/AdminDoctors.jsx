@@ -17,6 +17,7 @@ export default function AdminDoctors() {
   const [doctors, setDoctors] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
@@ -28,6 +29,7 @@ export default function AdminDoctors() {
   const fetchDoctors = async () => {
     try {
       setIsLoading(true);
+      setError(null);
       const doctorsData = await API.doctors.getAll();
       
       // Transform the data to match the expected format
@@ -36,48 +38,24 @@ export default function AdminDoctors() {
         name: `${doctor.firstName} ${doctor.lastName}`,
         email: doctor.email,
         phone: doctor.phoneNumber || 'N/A',
-        specialization: doctor.specialization || 'General',
-        experience: doctor.yearsOfExperience ? `${doctor.yearsOfExperience} years` : 'N/A',
+        specialization: doctor.specialization || 'Not specified',
+        experience: doctor.yearsOfExperience ? `${doctor.yearsOfExperience} years` : 'Not specified',
         status: doctor.isActive ? 'active' : 'inactive',
-        patients: Math.floor(Math.random() * 200) + 50, // Mock data since backend doesn't provide this
-        rating: (Math.random() * 2 + 3).toFixed(1), // Mock data since backend doesn't provide this
+        patients: 'Not available', // Backend doesn't provide this data
+        rating: 'Not available', // Backend doesn't provide this data
         isVerified: doctor.isVerified,
-        licenseNumber: doctor.licenseNumber,
-        hospitalName: doctor.hospitalName,
-        education: doctor.education,
-        about: doctor.about,
+        licenseNumber: doctor.licenseNumber || 'Not provided',
+        hospitalName: doctor.hospitalName || 'Not specified',
+        education: doctor.education || 'Not specified',
+        about: doctor.about || 'No description available',
         profileImageUrl: doctor.profileImageUrl
       }));
       
       setDoctors(transformedDoctors);
     } catch (error) {
       console.error('Error fetching doctors:', error);
-      // Fallback to mock data if API fails
-      const mockDoctors = [
-        {
-          id: '1',
-          name: 'Dr. Sarah Johnson',
-          email: 'sarah.johnson@docnow.com',
-          phone: '+1 234-567-8901',
-          specialization: 'Cardiology',
-          experience: '10 years',
-          status: 'active',
-          patients: 156,
-          rating: 4.8
-        },
-        {
-          id: '2',
-          name: 'Dr. Michael Chen',
-          email: 'michael.chen@docnow.com',
-          phone: '+1 234-567-8902',
-          specialization: 'Neurology',
-          experience: '8 years',
-          status: 'active',
-          patients: 98,
-          rating: 4.9
-        }
-      ];
-      setDoctors(mockDoctors);
+      setError('Unable to fetch doctor data. Please ensure backend services are running.');
+      setDoctors([]);
     } finally {
       setIsLoading(false);
     }
@@ -154,6 +132,37 @@ export default function AdminDoctors() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#182C61]"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-black text-[#182C61]">Doctors Management</h1>
+            <p className="mt-2 text-[#808e9b]">Manage and monitor all doctors on the platform</p>
+          </div>
+        </div>
+        
+        <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="p-4 bg-red-100 rounded-full">
+              <XCircleIcon className="h-8 w-8 text-red-600" />
+            </div>
+            <h3 className="text-xl font-black text-red-800">Unable to Load Doctor Data</h3>
+            <p className="text-red-600 max-w-md">
+              {error}
+            </p>
+            <button
+              onClick={fetchDoctors}
+              className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-black"
+            >
+              Retry Connection
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

@@ -19,6 +19,7 @@ export default function AdminPatients() {
   const [patients, setPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -30,6 +31,8 @@ export default function AdminPatients() {
   const fetchPatients = async () => {
     try {
       setIsLoading(true);
+      setError(null);
+      
       const patientsData = await API.patients.getAll();
       
       // Get all users to filter patients
@@ -46,16 +49,16 @@ export default function AdminPatients() {
           name: patient.name || correspondingUser?.username || 'Unknown',
           email: correspondingUser?.email || 'N/A',
           phone: patient.phone || 'N/A',
-          age: patient.age || Math.floor(Math.random() * 60) + 20, // Mock if not available
+          age: patient.age || 'Not specified',
           gender: patient.gender || 'Not specified',
-          bloodGroup: ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'][Math.floor(Math.random() * 8)], // Mock data
-          registrationDate: correspondingUser ? new Date().toISOString().split('T')[0] : '2024-01-01', // Mock data
-          lastVisit: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Mock data
-          totalVisits: Math.floor(Math.random() * 20) + 1, // Mock data
+          bloodGroup: patient.bloodGroup || 'Not specified',
+          registrationDate: correspondingUser ? new Date().toISOString().split('T')[0] : 'Not specified',
+          lastVisit: patient.lastVisit || 'Not specified',
+          totalVisits: patient.totalVisits || 0,
           status: correspondingUser?.enabled ? 'active' : 'inactive',
-          assignedDoctor: ['Dr. Sarah Johnson', 'Dr. Michael Chen', 'Dr. Emily Rodriguez', 'Dr. James Wilson'][Math.floor(Math.random() * 4)], // Mock data
+          assignedDoctor: patient.assignedDoctor || 'Not assigned',
           medicalConditions: patient.medicalHistory || 'None',
-          insuranceProvider: ['Blue Cross', 'Aetna', 'UnitedHealth', 'Cigna', 'Medicare'][Math.floor(Math.random() * 5)], // Mock data
+          insuranceProvider: patient.insuranceProvider || 'Not specified',
           address: patient.address || 'Not provided'
         };
       });
@@ -63,42 +66,8 @@ export default function AdminPatients() {
       setPatients(transformedPatients);
     } catch (error) {
       console.error('Error fetching patients:', error);
-      // Fallback to mock data if API fails
-      const mockPatients = [
-        {
-          id: '1',
-          name: 'John Smith',
-          email: 'john.smith@email.com',
-          phone: '+1 234-567-8901',
-          age: 35,
-          gender: 'Male',
-          bloodGroup: 'O+',
-          registrationDate: '2024-01-15',
-          lastVisit: '2024-03-10',
-          totalVisits: 12,
-          status: 'active',
-          assignedDoctor: 'Dr. Sarah Johnson',
-          medicalConditions: 'Hypertension, Diabetes',
-          insuranceProvider: 'Blue Cross'
-        },
-        {
-          id: '2',
-          name: 'Emily Davis',
-          email: 'emily.davis@email.com',
-          phone: '+1 234-567-8902',
-          age: 28,
-          gender: 'Female',
-          bloodGroup: 'A+',
-          registrationDate: '2024-02-20',
-          lastVisit: '2024-03-12',
-          totalVisits: 8,
-          status: 'active',
-          assignedDoctor: 'Dr. Michael Chen',
-          medicalConditions: 'Asthma',
-          insuranceProvider: 'Aetna'
-        }
-      ];
-      setPatients(mockPatients);
+      setError('Unable to fetch patient data. Please ensure backend services are running.');
+      setPatients([]);
     } finally {
       setIsLoading(false);
     }
@@ -172,6 +141,37 @@ export default function AdminPatients() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#182C61]"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-black text-[#182C61]">Patients Management</h1>
+            <p className="mt-2 text-[#808e9b]">Manage and monitor all patients on the platform</p>
+          </div>
+        </div>
+        
+        <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="p-4 bg-red-100 rounded-full">
+              <XCircleIcon className="h-8 w-8 text-red-600" />
+            </div>
+            <h3 className="text-xl font-black text-red-800">Unable to Load Patient Data</h3>
+            <p className="text-red-600 max-w-md">
+              {error}
+            </p>
+            <button
+              onClick={fetchPatients}
+              className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-black"
+            >
+              Retry Connection
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
