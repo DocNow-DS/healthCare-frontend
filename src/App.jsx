@@ -12,6 +12,8 @@ import VideoConsultation from './pages/VideoConsultation.jsx'
 import Payments from './pages/Payments.jsx'
 import AdminDoctors from './pages/AdminDoctors.jsx'
 import AdminPatients from './pages/AdminPatients.jsx'
+import AdminDashboard from './pages/AdminDashboard.jsx'
+import DoctorDashboard from './pages/DoctorDashboard.jsx'
 import './utils/debug-auth.js' // Load debug utilities
 import './utils/test-auth.js' // Load test auth utilities
 import './utils/test-admin-routing.js' // Load admin routing test
@@ -59,7 +61,7 @@ function App() {
               <Routes>
                 {userRole === 'ADMIN' ? (
                   <>
-                    <Route index element={<AdminDoctors />} />
+                    <Route index element={<AdminDashboard />} />
                     <Route path="doctors-management" element={<AdminDoctors />} />
                     <Route path="patients-management" element={<AdminPatients />} />
                     <Route path="management" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Admin Management</h1><p className="text-[#808e9b] mt-4 font-bold">User and Platform operations.</p></div>} />
@@ -68,7 +70,7 @@ function App() {
                   </>
                 ) : userRole === 'DOCTOR' ? (
                   <>
-                    <Route index element={<Home />} />
+                    <Route index element={<DoctorDashboard />} />
                     <Route path="appointments" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Appointments</h1><p className="text-[#808e9b] mt-4 font-bold">Manage your schedule here.</p></div>} />
                     <Route path="patients" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">My Patients</h1><p className="text-[#808e9b] mt-4 font-bold">View and manage patient records.</p></div>} />
                     <Route path="consultations" element={<VideoConsultation />} />
