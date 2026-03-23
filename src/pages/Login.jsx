@@ -1,37 +1,62 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { API } from '../config/api';
-import { setAuthData } from '../utils/auth';
+import { httpJson } from '../lib/http';
+import { api } from '../config/api';
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  const mapRolesToUiRole = (roles) => {
+    const upperRoles = Array.isArray(roles)
+      ? roles.map((r) => String(r).toUpperCase())
+      : [];
+
+    if (upperRoles.includes('ADMIN')) return 'Admin';
+    if (upperRoles.includes('DOCTOR')) return 'Doctor';
+    return 'Patient';
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
     setError('');
-
+    setIsSubmitting(true);
     try {
-      const response = await API.auth.login({
-        username: username,
-        email: username.includes('@') ? username : undefined, // Send as email if contains @
-        password: password
+      const result = await httpJson(`${api.authBase}/login`, {
+        method: 'POST',
+        body: {
+          email,
+          password,
+        },
       });
 
-      // Store the valid JWT token and user data
-      setAuthData(response.token, response.user);
-      
+      const token = result?.token;
+      const user = result?.user;
+      const role = mapRolesToUiRole(user?.roles);
+
+      if (typeof token !== 'string' || token.length === 0) {
+        throw new Error('Login failed: missing token');
+      }
+
+      localStorage.setItem('auth_token', token);
+      localStorage.setItem(
+        'auth_user',
+        JSON.stringify({
+          ...(user ?? {}),
+          username: user?.username ?? email.split('@')[0],
+          role,
+        })
+      );
+
       if (onLogin) onLogin();
       navigate('/dashboard');
-    } catch (error) {
-      console.error('Login failed:', error);
-      setError('Invalid credentials. Please try again.');
+    } catch (err) {
+      setError(err?.message || 'Login failed');
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -61,7 +86,7 @@ export default function Login({ onLogin }) {
               <input
                 type="text"
                 required
-                placeholder="Enter username or email address"
+                placeholder="Email address"
                 className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -93,20 +118,16 @@ export default function Login({ onLogin }) {
             </div>
 
             <div>
-              <button 
-                type="submit" 
-                className="btn-primary w-full py-4 text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Signing In...' : 'Sign In'}
+              <button type="submit" className="btn-primary w-full py-4 text-[10px]" disabled={isSubmitting}>
+                {isSubmitting ? 'Signing In…' : 'Sign In'}
               </button>
             </div>
 
-            {error && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl">
-                <p className="text-red-600 text-sm font-medium">{error}</p>
+            {error ? (
+              <div className="text-center text-[10px] font-black text-[#eb2f06] uppercase tracking-widest">
+                {error}
               </div>
-            )}
+            ) : null}
           </form>
 
           <div className="mt-8 pt-8 border-t-2 border-slate-50 text-center">
