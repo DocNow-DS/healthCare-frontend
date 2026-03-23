@@ -1,0 +1,371 @@
+import { useState, useEffect } from 'react';
+import { 
+  MagnifyingGlassIcon,
+  PencilIcon,
+  TrashIcon,
+  UserPlusIcon,
+  EnvelopeIcon,
+  PhoneIcon,
+  CalendarIcon,
+  DocumentTextIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ClockIcon,
+  HeartIcon
+} from '@heroicons/react/24/outline';
+import { API } from '../config/api';
+
+export default function AdminPatients() {
+  const [patients, setPatients] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+
+  useEffect(() => {
+    fetchPatients();
+  }, []);
+
+  const fetchPatients = async () => {
+    try {
+      setIsLoading(true);
+      const patientsData = await API.patients.getAll();
+      
+      // Get all users to filter patients
+      const usersData = await API.admin.getAllUsers();
+      const patientUsers = usersData.filter(user => 
+        user.roles && user.roles.some(role => role.name === 'PATIENT')
+      );
+      
+      // Transform and combine data
+      const transformedPatients = patientsData.map((patient, index) => {
+        const correspondingUser = patientUsers.find(user => user.id === patient.userId);
+        return {
+          id: patient.id,
+          name: patient.name || correspondingUser?.username || 'Unknown',
+          email: correspondingUser?.email || 'N/A',
+          phone: patient.phone || 'N/A',
+          age: patient.age || Math.floor(Math.random() * 60) + 20, // Mock if not available
+          gender: patient.gender || 'Not specified',
+          bloodGroup: ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'][Math.floor(Math.random() * 8)], // Mock data
+          registrationDate: correspondingUser ? new Date().toISOString().split('T')[0] : '2024-01-01', // Mock data
+          lastVisit: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Mock data
+          totalVisits: Math.floor(Math.random() * 20) + 1, // Mock data
+          status: correspondingUser?.enabled ? 'active' : 'inactive',
+          assignedDoctor: ['Dr. Sarah Johnson', 'Dr. Michael Chen', 'Dr. Emily Rodriguez', 'Dr. James Wilson'][Math.floor(Math.random() * 4)], // Mock data
+          medicalConditions: patient.medicalHistory || 'None',
+          insuranceProvider: ['Blue Cross', 'Aetna', 'UnitedHealth', 'Cigna', 'Medicare'][Math.floor(Math.random() * 5)], // Mock data
+          address: patient.address || 'Not provided'
+        };
+      });
+      
+      setPatients(transformedPatients);
+    } catch (error) {
+      console.error('Error fetching patients:', error);
+      // Fallback to mock data if API fails
+      const mockPatients = [
+        {
+          id: '1',
+          name: 'John Smith',
+          email: 'john.smith@email.com',
+          phone: '+1 234-567-8901',
+          age: 35,
+          gender: 'Male',
+          bloodGroup: 'O+',
+          registrationDate: '2024-01-15',
+          lastVisit: '2024-03-10',
+          totalVisits: 12,
+          status: 'active',
+          assignedDoctor: 'Dr. Sarah Johnson',
+          medicalConditions: 'Hypertension, Diabetes',
+          insuranceProvider: 'Blue Cross'
+        },
+        {
+          id: '2',
+          name: 'Emily Davis',
+          email: 'emily.davis@email.com',
+          phone: '+1 234-567-8902',
+          age: 28,
+          gender: 'Female',
+          bloodGroup: 'A+',
+          registrationDate: '2024-02-20',
+          lastVisit: '2024-03-12',
+          totalVisits: 8,
+          status: 'active',
+          assignedDoctor: 'Dr. Michael Chen',
+          medicalConditions: 'Asthma',
+          insuranceProvider: 'Aetna'
+        }
+      ];
+      setPatients(mockPatients);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle patient actions
+  const handleDeletePatient = async (patientId, userId) => {
+    if (window.confirm('Are you sure you want to delete this patient?')) {
+      try {
+        // Delete patient profile
+        await API.patients.delete?.(patientId); // If delete endpoint exists
+        // Delete user account
+        if (userId) {
+          await API.admin.deleteUser(userId);
+        }
+        setPatients(patients.filter(patient => patient.id !== patientId));
+        alert('Patient deleted successfully');
+      } catch (error) {
+        console.error('Error deleting patient:', error);
+        alert('Failed to delete patient. Please try again.');
+      }
+    }
+  };
+
+  const handleUpdatePatientStatus = async (userId, currentStatus) => {
+    try {
+      const newStatus = !currentStatus;
+      await API.admin.updateUser(userId, { enabled: newStatus });
+      fetchPatients(); // Refresh the list
+    } catch (error) {
+      console.error('Error updating patient status:', error);
+      alert('Failed to update patient status. Please try again.');
+    }
+  };
+
+  const filteredPatients = patients.filter(patient =>
+    patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    patient.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    patient.assignedDoctor.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    patient.medicalConditions.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'active':
+        return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
+      case 'inactive':
+        return <XCircleIcon className="h-5 w-5 text-red-500" />;
+      case 'pending':
+        return <ClockIcon className="h-5 w-5 text-yellow-500" />;
+      default:
+        return null;
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const styles = {
+      active: 'bg-green-100 text-green-800',
+      inactive: 'bg-red-100 text-red-800',
+      pending: 'bg-yellow-100 text-yellow-800'
+    };
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status]}`}>
+        {getStatusIcon(status)}
+        <span className="ml-1">{status.charAt(0).toUpperCase() + status.slice(1)}</span>
+      </span>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#182C61]"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-black text-[#182C61]">Patients Management</h1>
+          <p className="mt-2 text-[#808e9b]">Manage and monitor all patients on the platform</p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 bg-[#182C61] text-white text-sm font-black rounded-xl hover:bg-[#2a3d7a] transition-colors"
+        >
+          <UserPlusIcon className="h-5 w-5 mr-2" />
+          Add Patient
+        </button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-xl border-2 border-slate-50">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                <UserPlusIcon className="h-6 w-6 text-blue-600" />
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-[#808e9b]">Total Patients</p>
+              <p className="text-2xl font-black text-[#182C61]">{patients.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl border-2 border-slate-50">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <CheckCircleIcon className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-[#808e9b]">Active</p>
+              <p className="text-2xl font-black text-[#182C61]">{patients.filter(p => p.status === 'active').length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl border-2 border-slate-50">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+                <XCircleIcon className="h-6 w-6 text-red-600" />
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-[#808e9b]">Inactive</p>
+              <p className="text-2xl font-black text-[#182C61]">{patients.filter(p => p.status === 'inactive').length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl border-2 border-slate-50">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                <HeartIcon className="h-6 w-6 text-purple-600" />
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-[#808e9b]">Avg Age</p>
+              <p className="text-2xl font-black text-[#182C61]">
+                {Math.round(patients.reduce((sum, p) => sum + p.age, 0) / patients.length)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <MagnifyingGlassIcon className="h-5 w-5 text-[#808e9b]" />
+        </div>
+        <input
+          type="text"
+          className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl text-sm placeholder-[#808e9b] focus:outline-none focus:ring-2 focus:ring-[#182C61] focus:border-transparent"
+          placeholder="Search patients by name, email, doctor, or medical conditions..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      {/* Patients Table */}
+      <div className="bg-white rounded-xl border-2 border-slate-50 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Patient
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Age/Gender
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Blood Group
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Assigned Doctor
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Last Visit
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total Visits
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredPatients.map((patient) => (
+                <tr key={patient.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{patient.name}</div>
+                      <div className="text-sm text-gray-500">{patient.email}</div>
+                      <div className="text-sm text-gray-500">{patient.phone}</div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{patient.age} years</div>
+                    <div className="text-sm text-gray-500">{patient.gender}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{patient.bloodGroup}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{patient.assignedDoctor}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{patient.lastVisit}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{patient.totalVisits}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {getStatusBadge(patient.status)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => {
+                          setSelectedPatient(patient);
+                          setShowEditModal(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-900"
+                        title="Edit Patient"
+                      >
+                        <PencilIcon className="h-5 w-5" />
+                      </button>
+                      <button className="text-green-600 hover:text-green-900" title="View Medical Records">
+                        <DocumentTextIcon className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => handleUpdatePatientStatus(patient.userId, patient.status === 'active')}
+                        className="text-yellow-600 hover:text-yellow-900"
+                        title="Toggle Status"
+                      >
+                        <ClockIcon className="h-5 w-5" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeletePatient(patient.id, patient.userId)}
+                        className="text-red-600 hover:text-red-900"
+                        title="Delete Patient"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,26 +1,38 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { API } from '../config/api';
+import { setAuthData } from '../utils/auth';
 
 export default function Login({ onLogin }) {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Default role logic for mock
-    let role = 'Patient';
-    if (email.startsWith('doctor')) role = 'Doctor';
-    if (email.startsWith('admin')) role = 'Admin';
+    setIsLoading(true);
+    setError('');
 
-    localStorage.setItem('auth_token', 'mock_token');
-    localStorage.setItem('auth_user', JSON.stringify({ 
-      username: email.split('@')[0], 
-      role: role 
-    }));
-    
-    if (onLogin) onLogin();
-    navigate('/dashboard');
+    try {
+      const response = await API.auth.login({
+        username: username,
+        email: username.includes('@') ? username : undefined, // Send as email if contains @
+        password: password
+      });
+
+      // Store the valid JWT token and user data
+      setAuthData(response.token, response.user);
+      
+      if (onLogin) onLogin();
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Login failed:', error);
+      setError('Invalid credentials. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -45,14 +57,14 @@ export default function Login({ onLogin }) {
           
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
-              <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Email Address</label>
+              <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Username or Email</label>
               <input
-                type="email"
+                type="text"
                 required
-                placeholder="Hint: start with doctor@ or admin@ for roles"
+                placeholder="Enter username or email address"
                 className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
               />
             </div>
 
@@ -81,10 +93,20 @@ export default function Login({ onLogin }) {
             </div>
 
             <div>
-              <button type="submit" className="btn-primary w-full py-4 text-[10px]">
-                Sign In
+              <button 
+                type="submit" 
+                className="btn-primary w-full py-4 text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Signing In...' : 'Sign In'}
               </button>
             </div>
+
+            {error && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-red-600 text-sm font-medium">{error}</p>
+              </div>
+            )}
           </form>
 
           <div className="mt-8 pt-8 border-t-2 border-slate-50 text-center">

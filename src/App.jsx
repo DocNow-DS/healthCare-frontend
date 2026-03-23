@@ -1,5 +1,6 @@
 import { Route, Routes, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { getAuthData } from './utils/auth'
 import Layout from './components/Layout'
 import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
@@ -9,6 +10,11 @@ import DoctorSearch from './pages/DoctorSearch.jsx'
 import AISymptomChecker from './pages/AISymptomChecker.jsx'
 import VideoConsultation from './pages/VideoConsultation.jsx'
 import Payments from './pages/Payments.jsx'
+import AdminDoctors from './pages/AdminDoctors.jsx'
+import AdminPatients from './pages/AdminPatients.jsx'
+import './utils/debug-auth.js' // Load debug utilities
+import './utils/test-auth.js' // Load test auth utilities
+import './utils/test-admin-routing.js' // Load admin routing test
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('auth_token'));
@@ -23,17 +29,25 @@ function App() {
 
   const checkAuth = () => setIsAuthenticated(!!localStorage.getItem('auth_token'));
 
+  // Get user role for conditional routing
+  const getUserRole = () => {
+    const { user } = getAuthData();
+    return user?.roles?.[0] || 'PATIENT';
+  };
+
+  const userRole = getUserRole();
+
   return (
     <Routes>
       {/* Public Pages */}
       <Route path="/" element={<LandingPage />} />
       <Route 
         path="/login" 
-        element={!isAuthenticated ? <Login onLogin={checkAuth} /> : <Navigate to="/dashboard" />} 
+        element={!isAuthenticated ? <Login onLogin={checkAuth} /> : <Navigate to={userRole === 'ADMIN' ? '/dashboard' : '/dashboard'} />} 
       />
       <Route 
         path="/signup" 
-        element={!isAuthenticated ? <Signup onSignup={checkAuth} /> : <Navigate to="/dashboard" />} 
+        element={!isAuthenticated ? <Signup onSignup={checkAuth} /> : <Navigate to={userRole === 'ADMIN' ? '/dashboard' : '/dashboard'} />} 
       />
 
       {/* Protected App Pages */}
@@ -43,14 +57,33 @@ function App() {
           isAuthenticated ? (
             <Layout onLogout={checkAuth}>
               <Routes>
-                <Route index element={<Home />} />
-                <Route path="doctors" element={<DoctorSearch />} />
-                <Route path="consultations" element={<VideoConsultation />} />
-                <Route path="ai-checker" element={<AISymptomChecker />} />
-                <Route path="payments" element={<Payments />} />
-                <Route path="appointments" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Appointments</h1><p className="text-[#808e9b] mt-4 font-bold">Manage your schedule here.</p></div>} />
-                <Route path="reports" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Medical Reports</h1><p className="text-[#808e9b] mt-4 font-bold">Access your health records.</p></div>} />
-                <Route path="management" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Admin Management</h1><p className="text-[#808e9b] mt-4 font-bold">User and Platform operations.</p></div>} />
+                {userRole === 'ADMIN' ? (
+                  <>
+                    <Route index element={<AdminDoctors />} />
+                    <Route path="doctors-management" element={<AdminDoctors />} />
+                    <Route path="patients-management" element={<AdminPatients />} />
+                    <Route path="management" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Admin Management</h1><p className="text-[#808e9b] mt-4 font-bold">User and Platform operations.</p></div>} />
+                    <Route path="transactions" element={<Payments />} />
+                    <Route path="settings" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Settings</h1><p className="text-[#808e9b] mt-4 font-bold">Admin settings and configuration.</p></div>} />
+                  </>
+                ) : userRole === 'DOCTOR' ? (
+                  <>
+                    <Route index element={<Home />} />
+                    <Route path="appointments" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Appointments</h1><p className="text-[#808e9b] mt-4 font-bold">Manage your schedule here.</p></div>} />
+                    <Route path="patients" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">My Patients</h1><p className="text-[#808e9b] mt-4 font-bold">View and manage patient records.</p></div>} />
+                    <Route path="consultations" element={<VideoConsultation />} />
+                  </>
+                ) : (
+                  <>
+                    <Route index element={<Home />} />
+                    <Route path="doctors" element={<DoctorSearch />} />
+                    <Route path="consultations" element={<VideoConsultation />} />
+                    <Route path="ai-checker" element={<AISymptomChecker />} />
+                    <Route path="payments" element={<Payments />} />
+                    <Route path="appointments" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Appointments</h1><p className="text-[#808e9b] mt-4 font-bold">Manage your schedule here.</p></div>} />
+                    <Route path="reports" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Medical Reports</h1><p className="text-[#808e9b] mt-4 font-bold">Access your health records.</p></div>} />
+                  </>
+                )}
                 <Route path="*" element={<Navigate to="/dashboard" />} />
               </Routes>
             </Layout>

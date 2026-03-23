@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { getAuthData, clearAuthData } from '../utils/auth';
 import { 
   HomeIcon, 
   CalendarIcon, 
@@ -29,6 +30,8 @@ const navConfigs = {
   ],
   Admin: [
     { name: 'Admin Hub', href: '/dashboard', icon: Squares2X2Icon },
+    { name: 'Doctors', href: '/dashboard/doctors-management', icon: UserGroupIcon },
+    { name: 'Patients', href: '/dashboard/patients-management', icon: UserGroupIcon },
     { name: 'Management', href: '/dashboard/management', icon: ShieldCheckIcon },
     { name: 'Transactions', href: '/dashboard/payments', icon: CreditCardIcon },
     { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
@@ -41,13 +44,17 @@ export default function Sidebar({ onLogout }) {
   const [user, setUser] = useState({ username: 'User', role: 'Patient' });
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('auth_user');
-    if (storedUser) setUser(JSON.parse(storedUser));
+    const { user: authUser } = getAuthData();
+    if (authUser) {
+      setUser({
+        username: authUser.username,
+        role: authUser.roles?.[0] || 'PATIENT'
+      });
+    }
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
+    clearAuthData();
     if (onLogout) onLogout();
     navigate('/');
   };
