@@ -15,9 +15,9 @@ export const services = {
   // Doctor Management service
   doctor: readEnv('VITE_DOCTOR_SERVICE_URL', 'http://localhost:8082'),
   // Appointment service
-  appointment: readEnv('VITE_APPOINTMENT_SERVICE_URL', 'http://localhost:8083'),
+  appointment: readEnv('VITE_APPOINTMENT_SERVICE_URL', 'http://localhost:8081'),
   // Telemedicine service
-  telemedicine: readEnv('VITE_TELEMEDICINE_SERVICE_URL', 'http://localhost:8084'),
+  telemedicine: readEnv('VITE_TELEMEDICINE_SERVICE_URL', 'http://localhost:8083'),
   // Payment service
   payment: readEnv('VITE_PAYMENT_SERVICE_URL', 'http://localhost:8085'),
   // Notification service
@@ -25,7 +25,7 @@ export const services = {
 }
 
 export const api = {
-  authBase: `${services.patient}/api/auth`,
+  authBase: readEnv('VITE_AUTH_BASE_URL', `${services.patient}/api/auth`),
 }
 
 // Get auth token from localStorage
@@ -79,13 +79,23 @@ const apiClient = async (url, options = {}) => {
     const response = await fetch(url, config);
     
     if (!response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      const isJson = contentType.includes('application/json');
+      const payload = isJson ? await response.json() : await response.text();
+      const backendMessage = typeof payload === 'string'
+        ? payload
+        : payload?.message || payload?.error || response.statusText;
+
       if (response.status === 401) {
         // Token expired or invalid, clear storage and redirect to login
         clearAuthData();
         window.location.href = '/login';
         throw new Error('Authentication required');
       }
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const err = new Error(`HTTP ${response.status} calling ${url}: ${backendMessage}`);
+      err.status = response.status;
+      err.payload = payload;
+      throw err;
     }
     
     return await response.json();
@@ -158,6 +168,25 @@ export const API = {
       method: 'POST',
       body: JSON.stringify(userData),
     }),
+  },
+
+  // Telemedicine (Video) Endpoints
+  telemedicine: {
+    createSession: (appointmentId) => apiClient(`${services.telemedicine}/api/telemedicine/session/${appointmentId}`, {
+      method: 'POST',
+    }),
+    createPatientSession: (patientId) => apiClient(`${services.telemedicine}/api/telemedicine/session/patient/${patientId}`, {
+      method: 'POST',
+    }),
+    createDirectSession: ({ patientId, peerPatientId }) => apiClient(`${services.telemedicine}/api/telemedicine/session/direct`, {
+      method: 'POST',
+      body: JSON.stringify({ patientId, peerPatientId }),
+    }),
+    joinSession: (appointmentId) => apiClient(`${services.telemedicine}/api/telemedicine/session/${appointmentId}/join`),
+    endSession: (appointmentId) => apiClient(`${services.telemedicine}/api/telemedicine/session/${appointmentId}/end`, {
+      method: 'POST',
+    }),
+    getSession: (appointmentId) => apiClient(`${services.telemedicine}/api/telemedicine/session/${appointmentId}`),
   },
 };
 

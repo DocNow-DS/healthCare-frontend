@@ -54,7 +54,9 @@ export default function Login({ onLogin }) {
       if (onLogin) onLogin();
       navigate('/dashboard');
     } catch (err) {
-      setError(err?.message || 'Login failed');
+      const details = err?.payload?.details;
+      const message = err?.message || 'Login failed';
+      setError(details ? `${message} (${details})` : message);
     } finally {
       setIsSubmitting(false);
     }
