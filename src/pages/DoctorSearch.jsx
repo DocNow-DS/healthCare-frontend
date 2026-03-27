@@ -1,25 +1,51 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { 
   MagnifyingGlassIcon, 
   AdjustmentsHorizontalIcon,
-  StarIcon
+  StarIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
+import { API } from '../config/api';
 
-const doctors = [
-  { id: 1, name: 'Dr. Sarah Wilson', specialty: 'Cardiologist', rating: 4.9, availability: 'Available Today', fee: 'LKR 2,500', image: 'https://images.unsplash.com/photo-1559839734-2b71f1536783?auto=format&fit=crop&q=80&w=200' },
-  { id: 2, name: 'Dr. Michael Chen', specialty: 'Neurologist', rating: 4.8, availability: 'Available Tomorrow', fee: 'LKR 3,000', image: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=200' },
-  { id: 3, name: 'Dr. Emily Adams', specialty: 'Pediatrician', rating: 4.9, availability: 'Available Today', fee: 'LKR 2,000', image: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&q=80&w=200' },
-];
-
-const specialties = ['All', 'Cardiology', 'Neurology', 'Pediatrics', 'Dermatology'];
+const fallbackImage = 'https://images.unsplash.com/photo-1559839734-2b71f1536783?auto=format&fit=crop&q=80&w=200';
 
 export default function DoctorSearch() {
+  const [doctors, setDoctors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('All');
 
+  const loadDoctors = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const list = await API.doctors.getAll();
+      setDoctors(Array.isArray(list) ? list : []);
+    } catch (e) {
+      setError(e?.message || 'Unable to load doctors from backend');
+      setDoctors([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDoctors();
+  }, []);
+
+  const specialties = useMemo(() => {
+    const set = new Set(['All']);
+    doctors.forEach((doc) => {
+      const spec = doc?.specialization || doc?.specialty;
+      if (typeof spec === 'string' && spec.trim()) set.add(spec.trim());
+    });
+    return Array.from(set);
+  }, [doctors]);
+
   const filteredDoctors = doctors.filter(doc => 
-    (selectedSpecialty === 'All' || doc.specialty.includes(selectedSpecialty)) &&
-    doc.name.toLowerCase().includes(searchTerm.toLowerCase())
+    (selectedSpecialty === 'All' || String(doc.specialization || doc.specialty || '').toLowerCase() === selectedSpecialty.toLowerCase()) &&
+    String(doc.name || doc.fullName || doc.username || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -39,11 +65,23 @@ export default function DoctorSearch() {
           </div>
         </div>
         <div className="flex items-center space-x-3">
-          <button className="p-4 bg-white border-2 border-slate-50 rounded-xl text-[#182C61] hover:border-[#182C61] transition-all relative">
+          <button
+            type="button"
+            onClick={loadDoctors}
+            className="p-4 bg-white border-2 border-slate-50 rounded-xl text-[#182C61] hover:border-[#182C61] transition-all relative"
+            title="Refresh doctors"
+          >
             <AdjustmentsHorizontalIcon className="h-5 w-5" />
           </button>
         </div>
       </div>
+
+      {error ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+          <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5" />
+          <span className="text-sm font-semibold text-amber-800">{error}</span>
+        </div>
+      ) : null}
 
       <div className="flex items-center space-x-3 overflow-x-auto pb-2 scrollbar-hide">
         {specialties.map((spec) => (
@@ -62,34 +100,38 @@ export default function DoctorSearch() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredDoctors.map((doctor) => (
+        {loading ? (
+          <div className="col-span-full text-sm font-bold text-[#808e9b]">Loading doctors...</div>
+        ) : filteredDoctors.length === 0 ? (
+          <div className="col-span-full text-sm font-bold text-[#808e9b]">No doctors match your filters.</div>
+        ) : filteredDoctors.map((doctor) => (
           <div key={doctor.id} className="dashboard-card group hover:-translate-y-1 transition-all duration-500">
             <div className="flex items-start justify-between mb-6">
               <div className="relative">
                 <img 
-                  src={doctor.image} 
-                  alt={doctor.name} 
+                  src={doctor.image || fallbackImage} 
+                  alt={doctor.name || doctor.fullName || 'Doctor'} 
                   className="w-20 h-20 rounded-2xl object-cover grayscale group-hover:grayscale-0 transition-all duration-700"
                 />
                 <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-white rounded-lg shadow-md flex items-center justify-center border-2 border-slate-50">
-                  <div className={`h-2.5 w-2.5 rounded-full ${doctor.availability.includes('Today') ? 'bg-[#eb2f06] animate-pulse' : 'bg-slate-300'}`}></div>
+                  <div className={`h-2.5 w-2.5 rounded-full ${doctor.isAvailable ? 'bg-[#eb2f06] animate-pulse' : 'bg-slate-300'}`}></div>
                 </div>
               </div>
               <div className="flex items-center space-x-1 bg-[#eb2f06]/5 px-2 py-1 rounded-full">
                 <StarIcon className="h-3.5 w-3.5 text-[#eb2f06] fill-current" />
-                <span className="text-[10px] font-black text-[#eb2f06]">{doctor.rating}</span>
+                <span className="text-[10px] font-black text-[#eb2f06]">{doctor.rating || 'N/A'}</span>
               </div>
             </div>
             
             <div className="space-y-1">
-              <h3 className="text-xl font-black text-[#182C61] tracking-tight">{doctor.name}</h3>
-              <p className="text-[9px] font-black text-[#808e9b] uppercase tracking-[0.2em]">{doctor.specialty}</p>
+              <h3 className="text-xl font-black text-[#182C61] tracking-tight">{doctor.name || doctor.fullName || doctor.username || 'Doctor'}</h3>
+              <p className="text-[9px] font-black text-[#808e9b] uppercase tracking-[0.2em]">{doctor.specialization || doctor.specialty || 'General'}</p>
             </div>
 
             <div className="mt-6 pt-6 border-t-2 border-slate-50 flex items-center justify-between">
                <div>
                   <p className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest mb-1">Fee</p>
-                  <p className="text-lg font-black text-[#182C61]">{doctor.fee}</p>
+                  <p className="text-lg font-black text-[#182C61]">LKR {doctor.consultationFee || doctor.fee || 'N/A'}</p>
                </div>
                <button className="btn-primary py-3 px-6 text-[9px] uppercase tracking-widest font-black">
                   Book

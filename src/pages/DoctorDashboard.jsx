@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { API } from '../config/api';
 import { 
   CalendarIcon, 
@@ -7,106 +7,215 @@ import {
   VideoCameraIcon,
   ClockIcon,
   CurrencyDollarIcon,
-  DocumentTextIcon,
-  ChartBarIcon,
   ArrowTrendingUpIcon,
-  ArrowTrendingDownIcon,
-  PlusCircleIcon,
   CheckCircleIcon,
-  XCircleIcon
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
 export default function DoctorDashboard() {
+  const navigate = useNavigate();
+  const [doctorName, setDoctorName] = useState('Doctor');
+  const [warning, setWarning] = useState('');
   const [stats, setStats] = useState({
     todayAppointments: 0,
     totalPatients: 0,
     completedConsultations: 0,
     monthlyEarnings: 0,
     upcomingAppointments: [],
-    recentPatients: []
+    recentPatients: [],
   });
   const [loading, setLoading] = useState(true);
+  const [startingCallFor, setStartingCallFor] = useState(null);
+
+  const readAuthUser = () => {
+    try {
+      const raw = localStorage.getItem('auth_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const startConsultation = async (patient) => {
+    const user = readAuthUser();
+    const doctorId = user?.id || user?.userId || user?.username || '';
+    const patientId = patient?.userId || patient?.id || '';
+
+    if (!doctorId || !patientId) {
+      alert('Missing doctorId or patientId. Please login again.');
+      return;
+    }
+
+    try {
+      setStartingCallFor(patientId);
+      await API.telemedicine.createConsultation({ doctorId, patientId });
+      // Redirect doctor into the meeting page
+      navigate(`/dashboard/consultations?appointmentId=${encodeURIComponent(patientId)}`);
+    } catch (e) {
+      console.error('Failed to start consultation', e);
+      alert(e?.message || 'Failed to start consultation');
+    } finally {
+      setStartingCallFor(null);
+    }
+  };
 
   useEffect(() => {
     fetchDashboardStats();
   }, []);
 
+  const normalizeId = (value) => String(value || '').trim();
+
+  const parseSessionTime = (session) => {
+    const value = session?.startedAt || session?.createdAt || session?.updatedAt || null;
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const isToday = (date) => {
+    if (!date) return false;
+    const now = new Date();
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate()
+    );
+  };
+
+  const isCurrentMonth = (date) => {
+    if (!date) return false;
+    const now = new Date();
+    return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+  };
+
+  const resolvePatientDisplay = (patient) => {
+    if (!patient) return 'Unknown Patient';
+    return patient.name || patient.username || patient.fullName || patient.email || 'Unknown Patient';
+  };
+
   const fetchDashboardStats = async () => {
+    const user = readAuthUser();
+    const fallbackDoctorId = normalizeId(user?.id || user?.userId || user?.username);
+
     try {
       setLoading(true);
-      
-      // Try to fetch real data
+
       let patientsData = [];
       let doctorProfile = null;
-      let backendError = false;
-      
+      let doctorSessions = [];
+
+      const errors = [];
+
       try {
         patientsData = await API.patients.getAll();
       } catch (error) {
-        console.log('Backend not available for patient data');
-        backendError = true;
+        errors.push('patients');
       }
-      
+
       try {
         doctorProfile = await API.doctors.getMyProfile();
       } catch (error) {
-        console.log('Backend not available for doctor profile');
-        backendError = true;
+        errors.push('doctor-profile');
       }
 
-      if (backendError) {
-        // Show error state when backend is not available
-        setStats({
-          todayAppointments: 0,
-          totalPatients: 0,
-          completedConsultations: 0,
-          monthlyEarnings: 0,
-          upcomingAppointments: [],
-          recentPatients: [],
-          backendError: true
-        });
-        return;
-      }
+      const doctorId = normalizeId(doctorProfile?.id || doctorProfile?.userId || fallbackDoctorId);
 
-      // Mock appointments data (can be replaced with real API call later)
-      const upcomingAppointments = [
-        {
-          id: 1,
-          patientName: 'John Smith',
-          time: '09:00 AM',
-          type: 'Consultation',
-          status: 'confirmed'
-        },
-        {
-          id: 2,
-          patientName: 'Maria Garcia',
-          time: '10:30 AM',
-          type: 'Follow-up',
-          status: 'confirmed'
-        },
-        {
-          id: 3,
-          patientName: 'Robert Wilson',
-          time: '02:00 PM',
-          type: 'Video Consultation',
-          status: 'pending'
+      if (doctorId) {
+        try {
+          doctorSessions = await API.telemedSessions.listForDoctor(doctorId);
+        } catch (error) {
+          errors.push('telemed-sessions');
         }
-      ];
+      }
 
-      const recentPatients = patientsData.slice(0, 5);
+      const safePatients = Array.isArray(patientsData) ? patientsData : [];
+      const safeSessions = Array.isArray(doctorSessions) ? doctorSessions : [];
+
+      setDoctorName(
+        doctorProfile?.name ||
+          doctorProfile?.fullName ||
+          user?.name ||
+          user?.username ||
+          'Doctor'
+      );
+
+      const patientById = new Map(
+        safePatients.map((p) => [normalizeId(p?.id || p?.userId), p])
+      );
+
+      const sessionRows = safeSessions
+        .map((session, index) => {
+          const when = parseSessionTime(session);
+          const patientId = normalizeId(session?.patientId);
+          const patient = patientById.get(patientId);
+          const status = String(session?.status || '').toUpperCase();
+          return {
+            id: session?.id || `${patientId || 'patient'}-${index}`,
+            status,
+            when,
+            patientId,
+            patientName: resolvePatientDisplay(patient),
+            type: 'Telemedicine',
+          };
+        })
+        .sort((a, b) => (b.when?.getTime() || 0) - (a.when?.getTime() || 0));
+
+      const todayAppointments = sessionRows.filter((row) => isToday(row.when) && row.status !== 'ENDED').length;
+      const completedConsultations = sessionRows.filter((row) => row.status === 'ENDED').length;
+      const monthlyCompleted = sessionRows.filter((row) => row.status === 'ENDED' && isCurrentMonth(row.when)).length;
+      const consultationFee = Number(doctorProfile?.consultationFee || doctorProfile?.fee || 0);
+      const monthlyEarnings = Number.isFinite(consultationFee)
+        ? Math.max(0, Math.round(monthlyCompleted * consultationFee))
+        : 0;
+
+      const upcomingAppointments = sessionRows
+        .filter((row) => row.status !== 'ENDED')
+        .slice(0, 5)
+        .map((row) => ({
+          id: row.id,
+          patientName: row.patientName,
+          time: row.when ? row.when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown time',
+          type: row.type,
+          status: row.status === 'IN_SESSION' ? 'confirmed' : 'pending',
+        }));
+
+      const recentPatients = Array.from(
+        new Map(
+          sessionRows
+            .filter((row) => row.patientId)
+            .map((row) => {
+              const source = patientById.get(row.patientId) || {};
+              return [
+                row.patientId,
+                {
+                  id: row.patientId,
+                  userId: row.patientId,
+                  name: resolvePatientDisplay(source),
+                  email: source?.email || 'No email',
+                  lastVisit: row.when ? row.when.toISOString() : new Date().toISOString(),
+                },
+              ];
+            })
+        ).values()
+      ).slice(0, 5);
+
+      setWarning(
+        errors.length
+          ? `Some data could not be loaded (${errors.join(', ')}). Showing available live values.`
+          : ''
+      );
 
       setStats({
-        todayAppointments: upcomingAppointments.length,
-        totalPatients: patientsData.length,
-        completedConsultations: 47,
-        monthlyEarnings: 8450,
+        todayAppointments,
+        totalPatients: safePatients.length,
+        completedConsultations,
+        monthlyEarnings,
         upcomingAppointments,
         recentPatients,
-        backendError: false
       });
     } catch (error) {
       console.error('Failed to fetch dashboard stats:', error);
-      // Set error state
+      setWarning('Unable to reach backend services. Please retry.');
       setStats({
         todayAppointments: 0,
         totalPatients: 0,
@@ -114,7 +223,6 @@ export default function DoctorDashboard() {
         monthlyEarnings: 0,
         upcomingAppointments: [],
         recentPatients: [],
-        backendError: true
       });
     } finally {
       setLoading(false);
@@ -127,18 +235,18 @@ export default function DoctorDashboard() {
         <div>
           <p className="text-sm font-medium text-[#808e9b] uppercase tracking-wider">{title}</p>
           <p className="text-3xl font-black text-[#182C61] mt-2">{loading ? '...' : value}</p>
-          {change && (
+          {change ? (
             <div className={`flex items-center mt-2 text-sm ${
               changeType === 'increase' ? 'text-green-600' : 'text-red-600'
             }`}>
               {changeType === 'increase' ? (
                 <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
               ) : (
-                <ArrowTrendingDownIcon className="h-4 w-4 mr-1" />
+                <ArrowTrendingUpIcon className="h-4 w-4 mr-1 rotate-180" />
               )}
               {change} from last month
             </div>
-          )}
+          ) : null}
         </div>
         <div className={`p-3 rounded-xl ${color}`}>
           <Icon className="h-6 w-6 text-white" />
@@ -185,43 +293,13 @@ export default function DoctorDashboard() {
     );
   }
 
-  if (stats.backendError) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-black text-[#182C61]">Doctor Dashboard</h1>
-            <p className="text-[#808e9b] mt-2 font-bold">Unable to connect to backend services</p>
-          </div>
-        </div>
-        <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="p-4 bg-red-100 rounded-full">
-              <XCircleIcon className="h-8 w-8 text-red-600" />
-            </div>
-            <h3 className="text-xl font-black text-red-800">Backend Services Unavailable</h3>
-            <p className="text-red-600 max-w-md">
-              Unable to connect to the backend services. Please ensure that the backend servers are running and try again.
-            </p>
-            <button
-              onClick={fetchDashboardStats}
-              className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-black"
-            >
-              Retry Connection
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-black text-[#182C61]">Doctor Dashboard</h1>
-          <p className="text-[#808e9b] mt-2 font-bold">Manage your practice and patients efficiently</p>
+          <p className="text-[#808e9b] mt-2 font-bold">Welcome back, Dr. {doctorName}</p>
         </div>
         <div className="flex items-center space-x-3">
           <button
@@ -233,13 +311,20 @@ export default function DoctorDashboard() {
         </div>
       </div>
 
+      {warning ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+          <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5" />
+          <p className="text-sm font-semibold text-amber-800">{warning}</p>
+        </div>
+      ) : null}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Today's Appointments"
           value={stats.todayAppointments}
           icon={CalendarIcon}
-          change="+2"
+          change={null}
           changeType="increase"
           color="bg-blue-500"
         />
@@ -247,7 +332,7 @@ export default function DoctorDashboard() {
           title="Total Patients"
           value={stats.totalPatients}
           icon={UserGroupIcon}
-          change="+5"
+          change={null}
           changeType="increase"
           color="bg-green-500"
         />
@@ -255,7 +340,7 @@ export default function DoctorDashboard() {
           title="Completed Consultations"
           value={stats.completedConsultations}
           icon={CheckCircleIcon}
-          change="+12"
+          change={null}
           changeType="increase"
           color="bg-purple-500"
         />
@@ -263,7 +348,7 @@ export default function DoctorDashboard() {
           title="Monthly Earnings"
           value={`$${stats.monthlyEarnings.toLocaleString()}`}
           icon={CurrencyDollarIcon}
-          change="+18%"
+          change={null}
           changeType="increase"
           color="bg-orange-500"
         />
@@ -363,6 +448,14 @@ export default function DoctorDashboard() {
                     <p className="text-xs text-[#808e9b]">
                       Last visit: {new Date(patient.lastVisit).toLocaleDateString()}
                     </p>
+                    <button
+                      onClick={() => startConsultation(patient)}
+                      disabled={!!startingCallFor}
+                      className="mt-2 px-3 py-1 bg-[#182C61] text-white rounded-lg text-xs font-black hover:bg-[#182C61]/80 disabled:opacity-60"
+                      title="Start video consultation"
+                    >
+                      {startingCallFor ? 'Starting…' : 'Call'}
+                    </button>
                   </div>
                 </div>
               ))

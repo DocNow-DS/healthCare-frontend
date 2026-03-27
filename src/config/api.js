@@ -24,8 +24,19 @@ export const services = {
   notification: readEnv('VITE_NOTIFICATION_SERVICE_URL', 'http://localhost:8086'),
 }
 
+// Debug: show configured service base URLs in dev
+if (import.meta?.env?.DEV) {
+  // eslint-disable-next-line no-console
+  console.log('[API services]', services)
+}
+
 export const api = {
   authBase: readEnv('VITE_AUTH_BASE_URL', `${services.patient}/api/auth`),
+}
+
+export const apiBases = {
+  telemedicine: readEnv('VITE_TELEMEDICINE_API_BASE', `${services.telemedicine}/api/telemedicine`),
+  telemedSessions: readEnv('VITE_TELEMED_SESSIONS_API_BASE', `${services.telemedicine}/api/telemed`),
 }
 
 // Get auth token from localStorage
@@ -105,6 +116,22 @@ const apiClient = async (url, options = {}) => {
   }
 };
 
+const telemedicineClient = async (path, options = {}) => {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
+  const base = apiBases.telemedicine.endsWith('/')
+    ? apiBases.telemedicine.slice(0, -1)
+    : apiBases.telemedicine
+  return apiClient(`${base}${cleanPath}`, options)
+}
+
+const telemedSessionsClient = async (path, options = {}) => {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
+  const base = apiBases.telemedSessions.endsWith('/')
+    ? apiBases.telemedSessions.slice(0, -1)
+    : apiBases.telemedSessions
+  return apiClient(`${base}${cleanPath}`, options)
+}
+
 // API endpoints
 export const API = {
   // Patient Management Endpoints
@@ -158,6 +185,51 @@ export const API = {
     getTransactions: () => apiClient(`${services.patient}/api/admin/transactions`),
   },
 
+  telemedicine: {
+    // Session endpoints
+    createSession: (appointmentId) => telemedicineClient(`/session/${appointmentId}`, { method: 'POST' }),
+    createPatientSession: (patientId) => telemedicineClient(`/session/patient/${patientId}`, { method: 'POST' }),
+    createDirectSession: (data) => telemedicineClient('/session/direct', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    joinSession: (appointmentId) => telemedicineClient(`/session/${appointmentId}/join`),
+    endSession: (appointmentId) => telemedicineClient(`/session/${appointmentId}/end`, { method: 'POST' }),
+    getSession: (appointmentId) => telemedicineClient(`/session/${appointmentId}`),
+
+    // Consultations
+    createConsultation: ({ doctorId, patientId }) => telemedicineClient('/consultations', {
+      method: 'POST',
+      body: JSON.stringify({ doctorId, patientId }),
+    }),
+    scheduleConsultation: ({ doctorId, patientId, scheduledAt }) => telemedicineClient('/consultations/schedule', {
+      method: 'POST',
+      body: JSON.stringify({ doctorId, patientId, scheduledAt }),
+    }),
+    answerConsultation: (consultationId) => telemedicineClient(`/consultations/${consultationId}/answer`, { method: 'POST' }),
+    declineConsultation: (consultationId) => telemedicineClient(`/consultations/${consultationId}/decline`, { method: 'POST' }),
+    endConsultation: (consultationId) => telemedicineClient(`/consultations/${consultationId}/end`, { method: 'POST' }),
+    getConsultation: (consultationId) => telemedicineClient(`/consultations/${consultationId}`),
+    listForPatient: (patientId) => telemedicineClient(`/consultations/patient/${patientId}`),
+    listForDoctor: (doctorId) => telemedicineClient(`/consultations/doctor/${doctorId}`),
+  },
+
+  telemedSessions: {
+    createOrGetByAppointment: (appointmentId, data = {}) =>
+      telemedSessionsClient(`/appointments/${appointmentId}/session`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getByAppointment: (appointmentId) => telemedSessionsClient(`/appointments/${appointmentId}/session`),
+    endByAppointment: (appointmentId, data = {}) =>
+      telemedSessionsClient(`/appointments/${appointmentId}/end`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    listForDoctor: (doctorId) => telemedSessionsClient(`/doctor/${doctorId}/sessions`),
+    listForPatient: (patientId) => telemedSessionsClient(`/patient/${patientId}/sessions`),
+  },
+
   // Auth Endpoints
   auth: {
     login: (credentials) => apiClient(`${services.patient}/api/auth/login`, {
@@ -170,24 +242,7 @@ export const API = {
     }),
   },
 
-  // Telemedicine (Video) Endpoints
-  telemedicine: {
-    createSession: (appointmentId) => apiClient(`${services.telemedicine}/api/telemedicine/session/${appointmentId}`, {
-      method: 'POST',
-    }),
-    createPatientSession: (patientId) => apiClient(`${services.telemedicine}/api/telemedicine/session/patient/${patientId}`, {
-      method: 'POST',
-    }),
-    createDirectSession: ({ patientId, peerPatientId }) => apiClient(`${services.telemedicine}/api/telemedicine/session/direct`, {
-      method: 'POST',
-      body: JSON.stringify({ patientId, peerPatientId }),
-    }),
-    joinSession: (appointmentId) => apiClient(`${services.telemedicine}/api/telemedicine/session/${appointmentId}/join`),
-    endSession: (appointmentId) => apiClient(`${services.telemedicine}/api/telemedicine/session/${appointmentId}/end`, {
-      method: 'POST',
-    }),
-    getSession: (appointmentId) => apiClient(`${services.telemedicine}/api/telemedicine/session/${appointmentId}`),
-  },
+  
 };
 
 export default API;
