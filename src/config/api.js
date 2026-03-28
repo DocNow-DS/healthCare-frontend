@@ -172,8 +172,6 @@ export const API = {
     }),
   },
 
-<<<<<<< Updated upstream
-=======
   carePlans: {
     create: (payload) => apiClient(`${services.doctor}/api/care-plans`, {
       method: 'POST',
@@ -196,7 +194,6 @@ export const API = {
     }),
   },
 
->>>>>>> Stashed changes
   // Admin Endpoints
   admin: {
     getAllUsers: () => apiClient(`${services.patient}/api/admin/users`),
