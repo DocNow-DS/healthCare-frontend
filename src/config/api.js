@@ -14,8 +14,8 @@ export const services = {
   patient: readEnv('VITE_PATIENT_SERVICE_URL', 'http://localhost:8081'),
   // Doctor Management service
   doctor: readEnv('VITE_DOCTOR_SERVICE_URL', 'http://localhost:8082'),
-  // Appointment service
-  appointment: readEnv('VITE_APPOINTMENT_SERVICE_URL', 'http://localhost:8081'),
+  // Appointment service (Spring Boot default in repo: 8080)
+  appointment: readEnv('VITE_APPOINTMENT_SERVICE_URL', 'http://localhost:8080'),
   // Telemedicine service
   telemedicine: readEnv('VITE_TELEMEDICINE_SERVICE_URL', 'http://localhost:8083'),
   // Payment service
