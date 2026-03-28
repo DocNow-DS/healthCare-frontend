@@ -20,6 +20,7 @@ import {
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
+  const [warning, setWarning] = useState('');
   const [stats, setStats] = useState({
     totalDoctors: 0,
     totalPatients: 0,
@@ -37,42 +38,51 @@ export default function AdminDashboard() {
   const fetchDashboardStats = async () => {
     try {
       setLoading(true);
-      
-      // Try to fetch real data, but use mock data if backend is not available
-      let doctorsData = [];
-      let patientsData = [];
-      
-      try {
-        doctorsData = await API.doctors.getAll();
-      } catch (error) {
-        console.log('Backend not available, using mock doctor data');
-        doctorsData = [
-          { id: 1, name: 'Dr. Sarah Johnson', email: 'sarah@hospital.com', specialization: 'Cardiology' },
-          { id: 2, name: 'Dr. Michael Chen', email: 'michael@hospital.com', specialization: 'Neurology' },
-          { id: 3, name: 'Dr. Emily Davis', email: 'emily@hospital.com', specialization: 'Pediatrics' }
-        ];
-      }
-      
-      try {
-        patientsData = await API.patients.getAll();
-      } catch (error) {
-        console.log('Backend not available, patients data will be empty');
-        patientsData = [];
+      setWarning('');
+
+      const errors = [];
+
+      const doctorsData = await API.doctors.getAll().catch(() => {
+        errors.push('doctors');
+        return [];
+      });
+
+      const patientsData = await API.patients.getAll().catch(() => {
+        errors.push('patients');
+        return [];
+      });
+
+      const doctorList = Array.isArray(doctorsData) ? doctorsData : [];
+      const patientList = Array.isArray(patientsData) ? patientsData : [];
+
+      let totalAppointments = 0;
+      for (const doctor of doctorList) {
+        const doctorId = doctor?.id || doctor?.userId;
+        if (!doctorId) continue;
+        const sessions = await API.telemedSessions.listForDoctor(doctorId).catch(() => {
+          errors.push('telemed-sessions');
+          return [];
+        });
+        totalAppointments += Array.isArray(sessions) ? sessions.length : 0;
       }
 
       // Get recent registrations (last 5 users)
-      const recentRegistrations = patientsData.slice(0, 5).map(patient => ({
+      const recentRegistrations = patientList.slice(0, 5).map(patient => ({
         id: patient.id,
         name: patient.name,
         email: patient.email,
         registrationDate: patient.createdAt || new Date().toISOString()
       }));
 
+      if (errors.length > 0) {
+        setWarning(`Some admin metrics failed to load (${Array.from(new Set(errors)).join(', ')}).`);
+      }
+
       setStats({
-        totalDoctors: doctorsData.length,
-        totalPatients: patientsData.length,
-        totalAppointments: 156,
-        totalRevenue: 45678,
+        totalDoctors: doctorList.length,
+        totalPatients: patientList.length,
+        totalAppointments,
+        totalRevenue: 0,
         recentRegistrations,
         recentAppointments: []
       });
@@ -174,6 +184,12 @@ export default function AdminDashboard() {
       default:
         return (
           <div className="space-y-8">
+            {warning ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm font-semibold text-amber-800">
+                {warning}
+              </div>
+            ) : null}
+
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <StatCard

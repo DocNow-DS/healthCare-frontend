@@ -14,6 +14,10 @@ import AdminDoctors from './pages/AdminDoctors.jsx'
 import AdminPatients from './pages/AdminPatients.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
 import DoctorDashboard from './pages/DoctorDashboard.jsx'
+import DoctorAppointments from './pages/DoctorAppointments.jsx'
+import DoctorPatients from './pages/DoctorPatients.jsx'
+import PatientAppointments from './pages/PatientAppointments.jsx'
+import PatientReports from './pages/PatientReports.jsx'
 import './utils/debug-auth.js' // Load debug utilities
 import './utils/test-auth.js' // Load test auth utilities
 import './utils/test-admin-routing.js' // Load admin routing test
@@ -71,8 +75,8 @@ function App() {
                 ) : userRole === 'DOCTOR' ? (
                   <>
                     <Route index element={<DoctorDashboard />} />
-                    <Route path="appointments" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Appointments</h1><p className="text-[#808e9b] mt-4 font-bold">Manage your schedule here.</p></div>} />
-                    <Route path="patients" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">My Patients</h1><p className="text-[#808e9b] mt-4 font-bold">View and manage patient records.</p></div>} />
+                    <Route path="appointments" element={<DoctorAppointments />} />
+                    <Route path="patients" element={<DoctorPatients />} />
                     <Route path="consultations" element={<VideoConsultation />} />
                   </>
                 ) : (
@@ -82,8 +86,8 @@ function App() {
                     <Route path="consultations" element={<VideoConsultation />} />
                     <Route path="ai-checker" element={<AISymptomChecker />} />
                     <Route path="payments" element={<Payments />} />
-                    <Route path="appointments" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Appointments</h1><p className="text-[#808e9b] mt-4 font-bold">Manage your schedule here.</p></div>} />
-                    <Route path="reports" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Medical Reports</h1><p className="text-[#808e9b] mt-4 font-bold">Access your health records.</p></div>} />
+                    <Route path="appointments" element={<PatientAppointments />} />
+                    <Route path="reports" element={<PatientReports />} />
                   </>
                 )}
                 <Route path="*" element={<Navigate to="/dashboard" />} />
