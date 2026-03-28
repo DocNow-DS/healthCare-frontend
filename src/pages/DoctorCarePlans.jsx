@@ -35,6 +35,17 @@ export default function DoctorCarePlans() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [plans, setPlans] = useState([]);
+  const [medicineCatalog, setMedicineCatalog] = useState([]);
+  const [medicineCatalogLoading, setMedicineCatalogLoading] = useState(false);
+  const [medicineCatalogError, setMedicineCatalogError] = useState('');
+  const [addingMedicine, setAddingMedicine] = useState(false);
+  const [newMedicine, setNewMedicine] = useState({
+    name: '',
+    genericName: '',
+    form: '',
+    strength: '',
+    notes: '',
+  });
 
   const [patientId, setPatientId] = useState(searchParams.get('patientId') || '');
   const [appointmentId, setAppointmentId] = useState(searchParams.get('appointmentId') || '');
@@ -73,10 +84,28 @@ export default function DoctorCarePlans() {
     }
   };
 
+  const loadMedicineCatalog = async () => {
+    setMedicineCatalogLoading(true);
+    setMedicineCatalogError('');
+    try {
+      const list = await API.medicines.getAll();
+      setMedicineCatalog(Array.isArray(list) ? list : []);
+    } catch (e) {
+      setMedicineCatalog([]);
+      setMedicineCatalogError(e?.payload?.message || e?.message || 'Unable to load medicine catalog');
+    } finally {
+      setMedicineCatalogLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadPlans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorId, historyPatientId]);
+
+  useEffect(() => {
+    loadMedicineCatalog();
+  }, []);
 
   const updateMedicine = (index, key, value) => {
     setMedicines((prev) => prev.map((m, i) => (i === index ? { ...m, [key]: value } : m)));
@@ -98,6 +127,34 @@ export default function DoctorCarePlans() {
     setNextVisitDays('');
     setMedicines([emptyMedicine()]);
     setPreVisitServices([emptyService()]);
+  };
+
+  const handleAddMedicineToCatalog = async (e) => {
+    e.preventDefault();
+    if (!newMedicine.name.trim()) {
+      setMedicineCatalogError('Medicine name is required');
+      return;
+    }
+
+    setAddingMedicine(true);
+    setMedicineCatalogError('');
+    try {
+      await API.medicines.create({
+        name: newMedicine.name.trim(),
+        genericName: newMedicine.genericName.trim(),
+        form: newMedicine.form.trim(),
+        strength: newMedicine.strength.trim(),
+        notes: newMedicine.notes.trim(),
+        active: true,
+      });
+      setNewMedicine({ name: '', genericName: '', form: '', strength: '', notes: '' });
+      await loadMedicineCatalog();
+      setSuccess('Medicine added to catalog.');
+    } catch (e2) {
+      setMedicineCatalogError(e2?.payload?.message || e2?.message || 'Failed to add medicine');
+    } finally {
+      setAddingMedicine(false);
+    }
   };
 
   const handleCreate = async (e) => {
@@ -193,8 +250,81 @@ export default function DoctorCarePlans() {
         </div>
       ) : null}
 
+      <div className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-lg font-black text-[#182C61]">Medicine Catalog</h2>
+          <button
+            type="button"
+            onClick={loadMedicineCatalog}
+            className="px-3 py-1.5 rounded-lg bg-[#182C61] text-white text-xs font-black hover:bg-[#182C61]/85"
+          >
+            Refresh Catalog
+          </button>
+        </div>
+
+        {medicineCatalogError ? (
+          <p className="text-xs font-bold text-amber-700">{medicineCatalogError}</p>
+        ) : null}
+
+        <form onSubmit={handleAddMedicineToCatalog} className="grid grid-cols-1 md:grid-cols-5 gap-2">
+          <input
+            className="px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Medicine name"
+            value={newMedicine.name}
+            onChange={(e) => setNewMedicine((prev) => ({ ...prev, name: e.target.value }))}
+            required
+          />
+          <input
+            className="px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Generic name"
+            value={newMedicine.genericName}
+            onChange={(e) => setNewMedicine((prev) => ({ ...prev, genericName: e.target.value }))}
+          />
+          <input
+            className="px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Form (tablet, syrup)"
+            value={newMedicine.form}
+            onChange={(e) => setNewMedicine((prev) => ({ ...prev, form: e.target.value }))}
+          />
+          <input
+            className="px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Strength (e.g. 500mg)"
+            value={newMedicine.strength}
+            onChange={(e) => setNewMedicine((prev) => ({ ...prev, strength: e.target.value }))}
+          />
+          <button
+            type="submit"
+            disabled={addingMedicine}
+            className="px-3 py-2 rounded-lg bg-[#eb2f06] text-white text-xs font-black disabled:opacity-60"
+          >
+            {addingMedicine ? 'Adding...' : 'Add Medicine'}
+          </button>
+          <input
+            className="md:col-span-5 px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Notes (optional)"
+            value={newMedicine.notes}
+            onChange={(e) => setNewMedicine((prev) => ({ ...prev, notes: e.target.value }))}
+          />
+        </form>
+
+        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+          {medicineCatalogLoading ? (
+            <p className="text-xs font-bold text-[#808e9b]">Loading medicine catalog...</p>
+          ) : medicineCatalog.length === 0 ? (
+            <p className="text-xs font-bold text-[#808e9b]">No medicines in catalog yet.</p>
+          ) : (
+            <p className="text-xs font-bold text-[#808e9b]">{medicineCatalog.length} medicines available for care-plan selection.</p>
+          )}
+        </div>
+      </div>
+
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-5">
         <h2 className="text-lg font-black text-[#182C61] mb-4">Create Care Plan</h2>
+        <datalist id="medicine-catalog-options">
+          {medicineCatalog.map((item) => (
+            <option key={item.id || item.name} value={item.name} />
+          ))}
+        </datalist>
         <form onSubmit={handleCreate} className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input
@@ -252,7 +382,8 @@ export default function DoctorCarePlans() {
               <div key={`med-${index}`} className="grid grid-cols-1 md:grid-cols-5 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                 <input
                   className="px-3 py-2 rounded-lg border border-slate-200"
-                  placeholder="Medicine"
+                  list="medicine-catalog-options"
+                  placeholder="Medicine (choose from catalog or type)"
                   value={medicine.medicineName}
                   onChange={(e) => updateMedicine(index, 'medicineName', e.target.value)}
                 />

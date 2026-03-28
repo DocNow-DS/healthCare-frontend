@@ -182,6 +182,14 @@ export const API = {
       apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}/patient/${patientId}`),
   },
 
+  medicines: {
+    getAll: () => apiClient(`${services.doctor}/api/medicines`),
+    create: (payload) => apiClient(`${services.doctor}/api/medicines`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  },
+
   // Admin Endpoints
   admin: {
     getAllUsers: () => apiClient(`${services.patient}/api/admin/users`),
