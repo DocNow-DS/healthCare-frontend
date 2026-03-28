@@ -77,18 +77,36 @@ const apiClient = async (url, options = {}) => {
 
   try {
     const response = await fetch(url, config);
-    
+    const text = await response.text();
+    let payload = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = null;
+      }
+    }
+
     if (!response.ok) {
       if (response.status === 401) {
-        // Token expired or invalid, clear storage and redirect to login
         clearAuthData();
         window.location.href = '/login';
         throw new Error('Authentication required');
       }
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const detail =
+        (payload && typeof payload.message === 'string' && payload.message) ||
+        (payload && typeof payload.error === 'string' && payload.error) ||
+        text ||
+        `HTTP error! status: ${response.status}`;
+      const err = new Error(detail);
+      err.status = response.status;
+      if (payload && typeof payload.error === 'string') {
+        err.code = payload.error;
+      }
+      throw err;
     }
-    
-    return await response.json();
+
+    return payload;
   } catch (error) {
     console.error('API Error:', error);
     throw error;
@@ -114,7 +132,10 @@ export const API = {
     getAll: () => apiClient(`${services.doctor}/api/doctors`),
     getById: (id) => apiClient(`${services.doctor}/api/doctors/${id}`),
     getByEmail: (email) => apiClient(`${services.doctor}/api/doctors/email/${email}`),
-    getBySpecialization: (specialization) => apiClient(`${services.doctor}/api/doctors/specialization/${specialization}`),
+    getBySpecialization: (specialization) =>
+      apiClient(
+        `${services.doctor}/api/doctors/specialization/${encodeURIComponent(specialization)}`,
+      ),
     update: (id, data) => apiClient(`${services.doctor}/api/doctors/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -133,6 +154,22 @@ export const API = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+  },
+
+  appointments: {
+    /** Doctor directory for booking (appointment service → patient public API). */
+    searchDoctorsForBooking: (specialty) => {
+      const q =
+        specialty != null && specialty !== '' && specialty !== 'All'
+          ? `?specialty=${encodeURIComponent(specialty)}`
+          : ''
+      return apiClient(`${services.appointment}/api/patient/booking/doctors${q}`)
+    },
+    create: (body) =>
+      apiClient(`${services.appointment}/api/patient/appointments`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   },
 
   // Admin Endpoints
