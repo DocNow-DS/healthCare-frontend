@@ -18,6 +18,10 @@ import DoctorAppointments from './pages/DoctorAppointments.jsx'
 import DoctorPatients from './pages/DoctorPatients.jsx'
 import PatientAppointments from './pages/PatientAppointments.jsx'
 import PatientReports from './pages/PatientReports.jsx'
+import PaymentHistory from './pages/PaymentHistory.jsx'
+import PaymentCheckout from './pages/PaymentCheckout.jsx'
+import PaymentSuccess from './pages/PaymentSuccess.jsx'
+import PaymentCancel from './pages/PaymentCancel.jsx'
 import './utils/debug-auth.js' // Load debug utilities
 import './utils/test-auth.js' // Load test auth utilities
 import './utils/test-admin-routing.js' // Load admin routing test
@@ -71,6 +75,10 @@ function App() {
                     <Route path="management" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Admin Management</h1><p className="text-[#808e9b] mt-4 font-bold">User and Platform operations.</p></div>} />
                     <Route path="transactions" element={<Payments />} />
                     <Route path="settings" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Settings</h1><p className="text-[#808e9b] mt-4 font-bold">Admin settings and configuration.</p></div>} />
+                    <Route path="payments" element={<PaymentHistory />} />
+                    <Route path="payment/checkout" element={<PaymentCheckout />} />
+                    <Route path="payment/success" element={<PaymentSuccess />} />
+                    <Route path="payment/cancel" element={<PaymentCancel />} />
                   </>
                 ) : userRole === 'DOCTOR' ? (
                   <>
@@ -88,6 +96,10 @@ function App() {
                     <Route path="payments" element={<Payments />} />
                     <Route path="appointments" element={<PatientAppointments />} />
                     <Route path="reports" element={<PatientReports />} />
+                    <Route path="payment-history" element={<PaymentHistory />} />
+                    <Route path="payment/checkout" element={<PaymentCheckout />} />
+                    <Route path="payment/success" element={<PaymentSuccess />} />
+                    <Route path="payment/cancel" element={<PaymentCancel />} />
                   </>
                 )}
                 <Route path="*" element={<Navigate to="/dashboard" />} />

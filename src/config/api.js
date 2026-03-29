@@ -242,7 +242,21 @@ export const API = {
     }),
   },
 
-  
+  // Payment Endpoints
+  payment: {
+    // Create Stripe checkout session
+    createCheckoutSession: (data) => apiClient(`${services.payment}/api/v1/payments/checkout-session`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    // Get payment by ID
+    getPayment: (paymentId) => apiClient(`${services.payment}/api/v1/payments/${paymentId}`),
+    // Get payment by consultation ID
+    getPaymentByConsultation: (consultationId) => apiClient(`${services.payment}/api/v1/payments/consultation/${consultationId}`),
+    // Get all payments for current patient
+    getMyPayments: () => apiClient(`${services.payment}/api/v1/payments/patient/my-payments`),
+  },
+
 };
 
 export default API;
