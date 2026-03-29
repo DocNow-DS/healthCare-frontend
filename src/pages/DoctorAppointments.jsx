@@ -54,7 +54,7 @@ export default function DoctorAppointments() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="max-w-sm">
           <h1 className="text-3xl font-black text-[#182C61]">Appointments</h1>
           <p className="text-[#808e9b] mt-1 font-bold">Live telemedicine schedule from backend</p>
         </div>
