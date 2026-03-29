@@ -172,6 +172,24 @@ export const API = {
     }),
   },
 
+  carePlans: {
+    create: (payload) => apiClient(`${services.doctor}/api/care-plans`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+    getByDoctor: (doctorId) => apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}`),
+    getByDoctorAndPatient: (doctorId, patientId) =>
+      apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}/patient/${patientId}`),
+  },
+
+  medicines: {
+    getAll: () => apiClient(`${services.doctor}/api/medicines`),
+    create: (payload) => apiClient(`${services.doctor}/api/medicines`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  },
+
   // Admin Endpoints
   admin: {
     getAllUsers: () => apiClient(`${services.patient}/api/admin/users`),

@@ -16,6 +16,7 @@ import AdminDashboard from './pages/AdminDashboard.jsx'
 import DoctorDashboard from './pages/DoctorDashboard.jsx'
 import DoctorAppointments from './pages/DoctorAppointments.jsx'
 import DoctorPatients from './pages/DoctorPatients.jsx'
+import DoctorCarePlans from './pages/DoctorCarePlans.jsx'
 import PatientAppointments from './pages/PatientAppointments.jsx'
 import PatientReports from './pages/PatientReports.jsx'
 import PaymentHistory from './pages/PaymentHistory.jsx'
@@ -85,6 +86,7 @@ function App() {
                     <Route index element={<DoctorDashboard />} />
                     <Route path="appointments" element={<DoctorAppointments />} />
                     <Route path="patients" element={<DoctorPatients />} />
+                    <Route path="care-plans" element={<DoctorCarePlans />} />
                     <Route path="consultations" element={<VideoConsultation />} />
                   </>
                 ) : (

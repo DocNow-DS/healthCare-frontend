@@ -7,6 +7,7 @@ import {
   UserGroupIcon, 
   BeakerIcon, 
   VideoCameraIcon,
+  ClipboardDocumentListIcon,
   CreditCardIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
@@ -26,6 +27,7 @@ const navConfigs = {
     { name: 'Schedule', href: '/dashboard', icon: HomeIcon },
     { name: 'Appointments', href: '/dashboard/appointments', icon: CalendarIcon },
     { name: 'Patients', href: '/dashboard/patients', icon: UserGroupIcon },
+    { name: 'Care Plans', href: '/dashboard/care-plans', icon: ClipboardDocumentListIcon },
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
   ],
   Admin: [
