@@ -28,7 +28,7 @@ export default function Login({ onLogin }) {
       const result = await httpJson(`${api.authBase}/login`, {
         method: 'POST',
         body: {
-          email: username,
+          username,
           password,
         },
       });

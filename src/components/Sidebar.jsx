@@ -12,7 +12,8 @@ import {
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
   ShieldCheckIcon,
-  Squares2X2Icon
+  Squares2X2Icon,
+  BellIcon
 } from '@heroicons/react/24/outline';
 
 const navConfigs = {
@@ -22,6 +23,7 @@ const navConfigs = {
     { name: 'AI Checker', href: '/dashboard/ai-checker', icon: BeakerIcon },
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
     { name: 'Payments', href: '/dashboard/payments', icon: CreditCardIcon },
+    { name: 'Notifications', href: '/dashboard/notifications', icon: BellIcon },
   ],
   Doctor: [
     { name: 'Schedule', href: '/dashboard', icon: HomeIcon },
