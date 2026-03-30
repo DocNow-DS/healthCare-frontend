@@ -29,6 +29,7 @@ export default function DoctorCarePlans() {
   const [searchParams] = useSearchParams();
   const authUser = useMemo(() => readAuthUser(), []);
   const doctorId = useMemo(() => authUser?.id || authUser?.userId || authUser?.username || '', [authUser]);
+  const [activeTab, setActiveTab] = useState('create');
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -66,6 +67,9 @@ export default function DoctorCarePlans() {
   const [preVisitServices, setPreVisitServices] = useState([emptyService()]);
 
   const [historyPatientId, setHistoryPatientId] = useState(searchParams.get('patientId') || '');
+  const [consultationSessions, setConsultationSessions] = useState([]);
+  const [consultationLoading, setConsultationLoading] = useState(false);
+  const [consultationError, setConsultationError] = useState('');
 
   const sortPlans = (list) => {
     const copy = Array.isArray(list) ? [...list] : [];
@@ -108,8 +112,32 @@ export default function DoctorCarePlans() {
     }
   };
 
+  const loadConsultationSessions = async () => {
+    if (!doctorId) return;
+    setConsultationLoading(true);
+    setConsultationError('');
+    try {
+      const list = await API.telemedicine.listForDoctor(doctorId);
+      const sessions = Array.isArray(list) ? list : [];
+      const filtered = historyPatientId
+        ? sessions.filter((session) => String(session?.patientId || '') === String(historyPatientId))
+        : sessions;
+      setConsultationSessions(sortPlans(filtered));
+    } catch (e) {
+      setConsultationSessions([]);
+      setConsultationError(e?.payload?.message || e?.message || 'Unable to load consultation session history');
+    } finally {
+      setConsultationLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadPlans();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctorId, historyPatientId]);
+
+  useEffect(() => {
+    loadConsultationSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorId, historyPatientId]);
 
@@ -303,6 +331,40 @@ export default function DoctorCarePlans() {
         </div>
       ) : null}
 
+      <div className="bg-white border-2 border-slate-50 rounded-2xl p-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('create')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-black transition ${
+              activeTab === 'create' ? 'bg-[#182C61] text-white' : 'bg-slate-50 text-[#182C61] hover:bg-slate-100'
+            }`}
+          >
+            Create Care Plan
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-black transition ${
+              activeTab === 'history' ? 'bg-[#182C61] text-white' : 'bg-slate-50 text-[#182C61] hover:bg-slate-100'
+            }`}
+          >
+            Maintain History
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('application')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-black transition ${
+              activeTab === 'application' ? 'bg-[#182C61] text-white' : 'bg-slate-50 text-[#182C61] hover:bg-slate-100'
+            }`}
+          >
+            Application
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'create' ? (
+      <>
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-lg font-black text-[#182C61]">Medicine Catalog</h2>
@@ -483,6 +545,10 @@ export default function DoctorCarePlans() {
         </div>
       ) : null}
 
+      </>
+      ) : null}
+
+      {activeTab === 'create' ? (
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-5">
         <h2 className="text-lg font-black text-[#182C61] mb-4">Create Care Plan</h2>
         <datalist id="medicine-catalog-options">
@@ -644,10 +710,12 @@ export default function DoctorCarePlans() {
           </div>
         </form>
       </div>
+      ) : null}
 
-      <div className="bg-white border-2 border-slate-50 rounded-2xl p-5">
+      {activeTab === 'history' ? (
+      <div className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-5">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-          <h2 className="text-lg font-black text-[#182C61]">Care Plan History</h2>
+          <h2 className="text-lg font-black text-[#182C61]">Maintain History</h2>
           <input
             className="px-4 py-2.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:border-[#182C61] max-w-sm"
             placeholder="Filter by patient ID"
@@ -656,31 +724,75 @@ export default function DoctorCarePlans() {
           />
         </div>
 
-        {loading ? (
-          <p className="text-sm font-bold text-[#808e9b]">Loading care plans...</p>
-        ) : plans.length === 0 ? (
-          <p className="text-sm font-bold text-[#808e9b]">No care plans found.</p>
-        ) : (
-          <div className="space-y-3">
-            {plans.map((plan) => (
-              <div key={plan.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <ClipboardDocumentListIcon className="h-5 w-5 text-[#182C61]" />
-                    <p className="text-sm font-black text-[#182C61]">Patient: {plan.patientId || 'N/A'}</p>
+        <div className="rounded-2xl border border-slate-100 p-4">
+          <h3 className="text-base font-black text-[#182C61] mb-3">Care Plan History</h3>
+          {loading ? (
+            <p className="text-sm font-bold text-[#808e9b]">Loading care plans...</p>
+          ) : plans.length === 0 ? (
+            <p className="text-sm font-bold text-[#808e9b]">No care plans found.</p>
+          ) : (
+            <div className="space-y-3">
+              {plans.map((plan) => (
+                <div key={plan.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <ClipboardDocumentListIcon className="h-5 w-5 text-[#182C61]" />
+                      <p className="text-sm font-black text-[#182C61]">Patient: {plan.patientId || 'N/A'}</p>
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
+                      {plan.status || 'ACTIVE'}
+                    </span>
                   </div>
-                  <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
-                    {plan.status || 'ACTIVE'}
-                  </span>
+                  <p className="text-xs font-bold text-[#808e9b] mt-2">Appointment: {plan.appointmentId || 'N/A'}</p>
+                  <p className="text-xs font-bold text-[#808e9b] mt-1">Created: {formatDate(plan.createdAt)}</p>
+                  <p className="text-xs font-bold text-[#1e272e] mt-2 whitespace-pre-wrap">{plan.consultationNotes || 'No notes'}</p>
                 </div>
-                <p className="text-xs font-bold text-[#808e9b] mt-2">Appointment: {plan.appointmentId || 'N/A'}</p>
-                <p className="text-xs font-bold text-[#808e9b] mt-1">Created: {formatDate(plan.createdAt)}</p>
-                <p className="text-xs font-bold text-[#1e272e] mt-2 whitespace-pre-wrap">{plan.consultationNotes || 'No notes'}</p>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-slate-100 p-4">
+          <h3 className="text-base font-black text-[#182C61] mb-3">Consultation Session History</h3>
+          {consultationError ? (
+            <p className="text-sm font-bold text-amber-700 mb-2">{consultationError}</p>
+          ) : null}
+          {consultationLoading ? (
+            <p className="text-sm font-bold text-[#808e9b]">Loading consultation sessions...</p>
+          ) : consultationSessions.length === 0 ? (
+            <p className="text-sm font-bold text-[#808e9b]">No consultation sessions found.</p>
+          ) : (
+            <div className="space-y-3">
+              {consultationSessions.map((session) => (
+                <div
+                  key={session.id || session.consultationId || `${session.patientId}-${session.createdAt}`}
+                  className="p-4 rounded-xl bg-slate-50 border border-slate-100"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-black text-[#182C61]">Patient: {session.patientId || 'N/A'}</p>
+                    <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
+                      {session.status || 'N/A'}
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-[#808e9b] mt-2">Doctor: {session.doctorId || 'N/A'}</p>
+                  <p className="text-xs font-bold text-[#808e9b] mt-1">Started: {formatDate(session.startedAt || session.createdAt)}</p>
+                  <p className="text-xs font-bold text-[#808e9b] mt-1">Ended: {formatDate(session.endedAt)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+      ) : null}
+
+      {activeTab === 'application' ? (
+      <div className="bg-white border-2 border-slate-50 rounded-2xl p-5">
+        <h2 className="text-lg font-black text-[#182C61]">Application</h2>
+        <p className="text-sm font-bold text-[#808e9b] mt-2">
+          Application section is ready. You can now add application-related doctor care plan workflows here.
+        </p>
+      </div>
+      ) : null}
     </div>
   );
 }
