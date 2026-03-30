@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import API from '../config/api.js';
 
 export default function PaymentSuccess() {
   const location = useLocation();
-  const navigate = useNavigate();
   const [paymentDetails, setPaymentDetails] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -22,17 +21,15 @@ export default function PaymentSuccess() {
 
   const verifyPayment = async () => {
     try {
-      // In a real implementation, you might want to verify the payment status
-      // For now, we'll just wait a moment to simulate verification
-      setTimeout(() => {
-        setPaymentDetails({
-          sessionId: sessionId,
-          status: 'COMPLETED',
-        });
-        setLoading(false);
-      }, 1000);
+      const response = await API.payment.getPaymentBySession(sessionId);
+      setPaymentDetails(response);
     } catch (error) {
       console.error('Error verifying payment:', error);
+      setPaymentDetails({
+        stripeSessionId: sessionId,
+        status: 'UNKNOWN',
+      });
+    } finally {
       setLoading(false);
     }
   };
@@ -79,13 +76,13 @@ export default function PaymentSuccess() {
                 <div className="flex justify-between">
                   <span className="text-gray-600">Transaction ID</span>
                   <span className="font-medium text-gray-900">
-                    {sessionId ? sessionId.slice(-12).toUpperCase() : 'N/A'}
+                    {(paymentDetails?.stripeSessionId || sessionId) ? (paymentDetails?.stripeSessionId || sessionId).slice(-12).toUpperCase() : 'N/A'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Status</span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    ✅ Completed
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${paymentDetails?.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                    {paymentDetails?.status === 'COMPLETED' ? 'Completed' : 'Processing'}
                   </span>
                 </div>
                 <div className="flex justify-between">
