@@ -64,6 +64,22 @@ export default function DoctorDashboard() {
   }, []);
 
   const normalizeId = (value) => String(value || '').trim();
+  const normalizeText = (value) => (typeof value === 'string' ? value.trim() : '');
+  const hasText = (value) => normalizeText(value).length > 0;
+
+  const resolvePatientId = (patient) =>
+    normalizeId(
+      patient?.id ||
+        patient?.userId ||
+        patient?._id ||
+        patient?.username ||
+        patient?.email ||
+        patient?.user?.id ||
+        patient?.user?._id ||
+        patient?.user?.userId ||
+        patient?.user?.username ||
+        patient?.user?.email
+    );
 
   const parseSessionTime = (session) => {
     const value = session?.startedAt || session?.createdAt || session?.updatedAt || null;
@@ -90,7 +106,27 @@ export default function DoctorDashboard() {
 
   const resolvePatientDisplay = (patient) => {
     if (!patient) return 'Unknown Patient';
-    return patient.name || patient.username || patient.fullName || patient.email || 'Unknown Patient';
+    const first = normalizeText(patient?.firstName || patient?.user?.firstName);
+    const last = normalizeText(patient?.lastName || patient?.user?.lastName);
+    const fullFromParts = `${first} ${last}`.trim();
+    if (hasText(fullFromParts)) return fullFromParts;
+
+    const direct = [
+      patient?.name,
+      patient?.fullName,
+      patient?.displayName,
+      patient?.username,
+      patient?.email,
+      patient?.user?.name,
+      patient?.user?.fullName,
+      patient?.user?.displayName,
+      patient?.user?.username,
+      patient?.user?.email,
+    ]
+      .map((value) => normalizeText(value))
+      .find((value) => hasText(value) && value.toLowerCase() !== 'unknown patient' && value.toLowerCase() !== 'unknown');
+
+    return direct || 'Unknown Patient';
   };
 
   const fetchDashboardStats = async () => {
@@ -139,9 +175,25 @@ export default function DoctorDashboard() {
           'Doctor'
       );
 
-      const patientById = new Map(
-        safePatients.map((p) => [normalizeId(p?.id || p?.userId), p])
-      );
+      const patientById = new Map();
+      safePatients.forEach((p) => {
+        const keys = [
+          resolvePatientId(p),
+          normalizeId(p?.id),
+          normalizeId(p?.userId),
+          normalizeId(p?._id),
+          normalizeId(p?.username),
+          normalizeId(p?.email),
+          normalizeId(p?.user?.id),
+          normalizeId(p?.user?._id),
+          normalizeId(p?.user?.userId),
+          normalizeId(p?.user?.username),
+          normalizeId(p?.user?.email),
+        ].filter(Boolean);
+        keys.forEach((key) => {
+          if (!patientById.has(key)) patientById.set(key, p);
+        });
+      });
 
       const sessionRows = safeSessions
         .map((session, index) => {

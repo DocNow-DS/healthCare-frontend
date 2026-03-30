@@ -188,6 +188,24 @@ export const API = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  },
+
+  carePlans: {
+    create: (payload) => apiClient(`${services.doctor}/api/care-plans`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+    getByDoctor: (doctorId) => apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}`),
+    getByDoctorAndPatient: (doctorId, patientId) =>
+      apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}/patient/${patientId}`),
+  },
+
+  medicines: {
+    getAll: () => apiClient(`${services.doctor}/api/medicines`),
+    create: (payload) => apiClient(`${services.doctor}/api/medicines`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
     update: (id, payload) => apiClient(`${services.doctor}/api/medicines/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
@@ -264,7 +282,23 @@ export const API = {
     }),
   },
 
-  
+  // Payment Endpoints
+  payment: {
+    // Create Stripe checkout session
+    createCheckoutSession: (data) => apiClient(`${services.payment}/api/v1/payments/checkout-session`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    // Get payment by ID
+    getPayment: (paymentId) => apiClient(`${services.payment}/api/v1/payments/${paymentId}`),
+    // Get payment by consultation ID
+    getPaymentByConsultation: (consultationId) => apiClient(`${services.payment}/api/v1/payments/consultation/${consultationId}`),
+    // Get payment by Stripe checkout session ID
+    getPaymentBySession: (sessionId) => apiClient(`${services.payment}/api/v1/payments/session/${sessionId}`),
+    // Get all payments for current patient
+    getMyPayments: () => apiClient(`${services.payment}/api/v1/payments/patient/my-payments`),
+  },
+
 };
 
 export default API;

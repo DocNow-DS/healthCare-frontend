@@ -48,7 +48,7 @@ export default function PatientAppointments() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="max-w-sm">
           <h1 className="text-3xl font-black text-[#182C61]">Appointments</h1>
           <p className="text-[#808e9b] mt-1 font-bold">Your backend telemedicine session history</p>
         </div>

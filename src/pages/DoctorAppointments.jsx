@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { API } from '../config/api';
 import { CalendarDaysIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
@@ -18,6 +19,11 @@ export default function DoctorAppointments() {
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState('');
   const [sessions, setSessions] = useState([]);
+
+  const canCreateCarePlan = (status) => {
+    const normalized = String(status || '').toUpperCase();
+    return normalized === 'ENDED' || normalized === 'COMPLETED';
+  };
 
   const loadAppointments = async () => {
     if (!doctorId) return;
@@ -48,7 +54,7 @@ export default function DoctorAppointments() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="max-w-sm">
           <h1 className="text-3xl font-black text-[#182C61]">Appointments</h1>
           <p className="text-[#808e9b] mt-1 font-bold">Live telemedicine schedule from backend</p>
         </div>
@@ -82,6 +88,16 @@ export default function DoctorAppointments() {
                   <p className="text-xs font-bold text-[#808e9b] mt-1">
                     {new Date(s.startedAt || s.createdAt || Date.now()).toLocaleString()}
                   </p>
+                  {canCreateCarePlan(s.status) ? (
+                    <div className="mt-3">
+                      <Link
+                        to={`/dashboard/care-plans?patientId=${encodeURIComponent(String(s.patientId || ''))}&appointmentId=${encodeURIComponent(String(s.id || ''))}`}
+                        className="inline-flex items-center px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg bg-[#eb2f06] text-white hover:bg-[#eb2f06]/90"
+                      >
+                        Create Care Plan
+                      </Link>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[#182C61]">
                   <CalendarDaysIcon className="h-4 w-4" />
