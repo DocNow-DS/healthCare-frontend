@@ -4,15 +4,25 @@ const isJsonResponse = (res) => {
 }
 
 export async function httpJson(url, { method = 'GET', headers, body, token } = {}) {
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(headers ?? {}),
-    },
-    body: body != null ? JSON.stringify(body) : undefined,
-  })
+  let res
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(headers ?? {}),
+      },
+      body: body != null ? JSON.stringify(body) : undefined,
+    })
+  } catch (e) {
+    const message = e?.message ? String(e.message) : 'Network error'
+    throw new Error(
+      `Network error calling ${method} ${url}. ` +
+        `Check that the backend is running and reachable (and that HTTPS pages are not calling HTTP APIs). ` +
+        `Original error: ${message}`
+    )
+  }
 
   const payload = isJsonResponse(res) ? await res.json() : await res.text()
   if (!res.ok) {

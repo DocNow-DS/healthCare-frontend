@@ -1,133 +1,52 @@
-import { useState, useEffect, useMemo } from 'react';
-import {
-  MagnifyingGlassIcon,
+import { useEffect, useMemo, useState } from 'react';
+import { 
+  MagnifyingGlassIcon, 
   AdjustmentsHorizontalIcon,
   StarIcon,
-  XMarkIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
-import API from '../config/api';
+import { API } from '../config/api';
 
-const SPECIALTY_FILTERS = [
-  'All',
-  'Cardiology',
-  'Neurology',
-  'Pediatrics',
-  'Dermatology',
-  'General',
-  'Orthopedics',
-  'Oncology',
-];
-
-function avatarUrl(doctor) {
-  const name = doctor?.name || doctor?.username || 'DR';
-  return (
-    doctor?.profileImageUrl ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=182C61&color=fff&size=128`
-  );
-}
+const fallbackImage = 'https://images.unsplash.com/photo-1559839734-2b71f1536783?auto=format&fit=crop&q=80&w=200';
 
 export default function DoctorSearch() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSpecialty, setSelectedSpecialty] = useState('All');
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
-  const [bookingDoctor, setBookingDoctor] = useState(null);
-  const [bookForm, setBookForm] = useState({
-    startTime: '',
-    consultationType: 'ONLINE',
-    notes: '',
-  });
-  const [bookMessage, setBookMessage] = useState(null);
-  const [booking, setBooking] = useState(false);
+  const [error, setError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedSpecialty, setSelectedSpecialty] = useState('All');
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const data = await API.appointments.searchDoctorsForBooking(
-          selectedSpecialty === 'All' ? null : selectedSpecialty,
-        );
-        if (!cancelled) setDoctors(Array.isArray(data) ? data : []);
-      } catch (e) {
-        if (!cancelled) {
-          setDoctors([]);
-          const status = e?.status;
-          const isNotFound = status === 404;
-          setLoadError({
-            message:
-              e?.message ||
-              'Unable to load doctors. Start appointment (8080) and patient (8081) services, then refresh.',
-            status,
-            code: e?.code,
-            isNotFound,
-          });
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSpecialty]);
-
-  const filteredDoctors = useMemo(
-    () =>
-      doctors.filter((doc) => {
-        const name = (doc.name || doc.username || '').toLowerCase();
-        const spec = (doc.specialty || '').toLowerCase();
-        const q = searchTerm.toLowerCase().trim();
-        if (!q) return true;
-        return name.includes(q) || spec.includes(q);
-      }),
-    [doctors, searchTerm],
-  );
-
-  const openBook = (doctor) => {
-    setBookMessage(null);
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(10, 0, 0, 0);
-    const pad = (n) => String(n).padStart(2, '0');
-    const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    setBookForm((f) => ({ ...f, startTime: local, consultationType: 'ONLINE', notes: '' }));
-    setBookingDoctor(doctor);
-  };
-
-  const submitBooking = async (e) => {
-    e.preventDefault();
-    if (!bookingDoctor || !bookForm.startTime) return;
-    setBooking(true);
-    setBookMessage(null);
-    let startTime = bookForm.startTime;
-    if (startTime.length === 16) startTime += ':00';
+  const loadDoctors = async () => {
+    setLoading(true);
+    setError('');
     try {
-      await API.appointments.create({
-        doctorId: bookingDoctor.id,
-        startTime,
-        durationMinutes: 30,
-        consultationType: bookForm.consultationType,
-        notes: bookForm.notes || undefined,
-      });
-      setBookMessage({ type: 'ok', text: 'Appointment requested. Status will be pending until the doctor accepts.' });
-      setTimeout(() => {
-        setBookingDoctor(null);
-        setBookMessage(null);
-      }, 2200);
-    } catch (err) {
-      setBookMessage({
-        type: 'err',
-        text:
-          err?.message ||
-          'Booking failed. Check appointment service (8080), JWT login, and that the slot is in the future.',
-      });
+      const list = await API.doctors.getAll();
+      setDoctors(Array.isArray(list) ? list : []);
+    } catch (e) {
+      setError(e?.message || 'Unable to load doctors from backend');
+      setDoctors([]);
     } finally {
-      setBooking(false);
+      setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadDoctors();
+  }, []);
+
+  const specialties = useMemo(() => {
+    const set = new Set(['All']);
+    doctors.forEach((doc) => {
+      const spec = doc?.specialization || doc?.specialty;
+      if (typeof spec === 'string' && spec.trim()) set.add(spec.trim());
+    });
+    return Array.from(set);
+  }, [doctors]);
+
+  const filteredDoctors = doctors.filter(doc => 
+    (selectedSpecialty === 'All' || String(doc.specialization || doc.specialty || '').toLowerCase() === selectedSpecialty.toLowerCase()) &&
+    String(doc.name || doc.fullName || doc.username || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -154,35 +73,21 @@ export default function DoctorSearch() {
         <div className="flex items-center space-x-3">
           <button
             type="button"
+            onClick={loadDoctors}
             className="p-4 bg-white border-2 border-slate-50 rounded-xl text-[#182C61] hover:border-[#182C61] transition-all relative"
-            aria-label="Filters"
+            title="Refresh doctors"
           >
             <AdjustmentsHorizontalIcon className="h-5 w-5" />
           </button>
         </div>
       </div>
 
-      {loadError && (
-        <div
-          className={`rounded-2xl border-2 px-6 py-4 text-sm font-bold ${
-            loadError.isNotFound
-              ? 'border-amber-200 bg-amber-50 text-amber-950'
-              : 'border-red-100 bg-red-50 text-red-800'
-          }`}
-          role="alert"
-        >
-          <p className="font-black uppercase tracking-widest text-[10px] opacity-70 mb-1">
-            {loadError.isNotFound ? 'Nothing found' : 'Could not load'}
-            {loadError.code ? ` • ${loadError.code}` : ''}
-          </p>
-          <p>{loadError.message}</p>
-          {loadError.isNotFound && (
-            <p className="mt-2 text-xs font-bold opacity-80">
-              Try another specialty chip or choose &quot;All&quot;, or clear the search box.
-            </p>
-          )}
+      {error ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+          <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5" />
+          <span className="text-sm font-semibold text-amber-800">{error}</span>
         </div>
-      )}
+      ) : null}
 
       <div className="flex items-center space-x-3 overflow-x-auto pb-2 scrollbar-hide">
         {SPECIALTY_FILTERS.map((spec) => (
@@ -201,61 +106,41 @@ export default function DoctorSearch() {
         ))}
       </div>
 
-      {loading ? (
-        <p className="text-center text-[#808e9b] font-black py-16">Loading doctors…</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredDoctors.map((doctor) => (
-            <div
-              key={doctor.id}
-              className="dashboard-card group hover:-translate-y-1 transition-all duration-500"
-            >
-              <div className="flex items-start justify-between mb-6">
-                <div className="relative">
-                  <img
-                    src={avatarUrl(doctor)}
-                    alt=""
-                    className="w-20 h-20 rounded-2xl object-cover grayscale group-hover:grayscale-0 transition-all duration-700"
-                  />
-                  <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-white rounded-lg shadow-md flex items-center justify-center border-2 border-slate-50">
-                    <div
-                      className={`h-2.5 w-2.5 rounded-full ${
-                        doctor.enabled !== false ? 'bg-emerald-500' : 'bg-slate-300'
-                      }`}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center space-x-1 bg-[#eb2f06]/5 px-2 py-1 rounded-full">
-                  <StarIcon className="h-3.5 w-3.5 text-[#eb2f06] fill-current" />
-                  <span className="text-[10px] font-black text-[#eb2f06]">—</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {loading ? (
+          <div className="col-span-full text-sm font-bold text-[#808e9b]">Loading doctors...</div>
+        ) : filteredDoctors.length === 0 ? (
+          <div className="col-span-full text-sm font-bold text-[#808e9b]">No doctors match your filters.</div>
+        ) : filteredDoctors.map((doctor) => (
+          <div key={doctor.id} className="dashboard-card group hover:-translate-y-1 transition-all duration-500">
+            <div className="flex items-start justify-between mb-6">
+              <div className="relative">
+                <img 
+                  src={doctor.image || fallbackImage} 
+                  alt={doctor.name || doctor.fullName || 'Doctor'} 
+                  className="w-20 h-20 rounded-2xl object-cover grayscale group-hover:grayscale-0 transition-all duration-700"
+                />
+                <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-white rounded-lg shadow-md flex items-center justify-center border-2 border-slate-50">
+                  <div className={`h-2.5 w-2.5 rounded-full ${doctor.isAvailable ? 'bg-[#eb2f06] animate-pulse' : 'bg-slate-300'}`}></div>
                 </div>
               </div>
-
-              <div className="space-y-1">
-                <h3 className="text-xl font-black text-[#182C61] tracking-tight">
-                  {doctor.name || doctor.username || 'Doctor'}
-                </h3>
-                <p className="text-[9px] font-black text-[#808e9b] uppercase tracking-[0.2em]">
-                  {doctor.specialty || 'Specialty not set'}
-                </p>
-                {doctor.hospitalName && (
-                  <p className="text-xs text-[#808e9b] font-bold mt-1">{doctor.hospitalName}</p>
-                )}
+              <div className="flex items-center space-x-1 bg-[#eb2f06]/5 px-2 py-1 rounded-full">
+                <StarIcon className="h-3.5 w-3.5 text-[#eb2f06] fill-current" />
+                <span className="text-[10px] font-black text-[#eb2f06]">{doctor.rating || 'N/A'}</span>
               </div>
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-xl font-black text-[#182C61] tracking-tight">{doctor.name || doctor.fullName || doctor.username || 'Doctor'}</h3>
+              <p className="text-[9px] font-black text-[#808e9b] uppercase tracking-[0.2em]">{doctor.specialization || doctor.specialty || 'General'}</p>
+            </div>
 
-              <div className="mt-6 pt-6 border-t-2 border-slate-50 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  {doctor.isVerified && (
-                    <span className="inline-block text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-                      Verified
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => openBook(doctor)}
-                  className="btn-primary py-3 px-6 text-[9px] uppercase tracking-widest font-black shrink-0"
-                >
+            <div className="mt-6 pt-6 border-t-2 border-slate-50 flex items-center justify-between">
+               <div>
+                  <p className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest mb-1">Fee</p>
+                  <p className="text-lg font-black text-[#182C61]">LKR {doctor.consultationFee || doctor.fee || 'N/A'}</p>
+               </div>
+               <button className="btn-primary py-3 px-6 text-[9px] uppercase tracking-widest font-black">
                   Book
                 </button>
               </div>

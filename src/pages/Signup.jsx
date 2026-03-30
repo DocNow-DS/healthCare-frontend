@@ -1,20 +1,45 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { API } from '../config/api';
 
 export default function Signup({ onSignup }) {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('Patient');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    localStorage.setItem('auth_token', 'mock_token');
-    localStorage.setItem('auth_user', JSON.stringify({ username, role }));
-    
-    if (onSignup) onSignup();
-    navigate('/dashboard');
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const normalizedRole = role.toUpperCase();
+      const result = await API.auth.register({
+        username,
+        email,
+        password,
+        role: normalizedRole,
+        roles: [normalizedRole],
+      });
+
+      const token = result?.token;
+      const user = result?.user || { username, email, role };
+
+      if (token) {
+        localStorage.setItem('auth_token', token);
+      }
+      localStorage.setItem('auth_user', JSON.stringify({ ...user, role }));
+
+      if (onSignup) onSignup();
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err?.message || 'Signup failed');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -90,10 +115,16 @@ export default function Signup({ onSignup }) {
             </div>
 
             <div>
-              <button type="submit" className="btn-primary w-full py-4 text-[10px]">
-                Create Account
+              <button type="submit" className="btn-primary w-full py-4 text-[10px]" disabled={isSubmitting}>
+                {isSubmitting ? 'Creating Account...' : 'Create Account'}
               </button>
             </div>
+
+            {error ? (
+              <div className="text-center text-[10px] font-black text-[#eb2f06] uppercase tracking-widest">
+                {error}
+              </div>
+            ) : null}
           </form>
 
           <div className="mt-8 pt-8 border-t-2 border-slate-50 text-center">

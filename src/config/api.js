@@ -17,15 +17,26 @@ export const services = {
   // Appointment service (Spring Boot default in repo: 8080)
   appointment: readEnv('VITE_APPOINTMENT_SERVICE_URL', 'http://localhost:8080'),
   // Telemedicine service
-  telemedicine: readEnv('VITE_TELEMEDICINE_SERVICE_URL', 'http://localhost:8084'),
+  telemedicine: readEnv('VITE_TELEMEDICINE_SERVICE_URL', 'http://localhost:8083'),
   // Payment service
   payment: readEnv('VITE_PAYMENT_SERVICE_URL', 'http://localhost:8085'),
   // Notification service
   notification: readEnv('VITE_NOTIFICATION_SERVICE_URL', 'http://localhost:8086'),
 }
 
+// Debug: show configured service base URLs in dev
+if (import.meta?.env?.DEV) {
+  // eslint-disable-next-line no-console
+  console.log('[API services]', services)
+}
+
 export const api = {
-  authBase: `${services.patient}/api/auth`,
+  authBase: readEnv('VITE_AUTH_BASE_URL', `${services.patient}/api/auth`),
+}
+
+export const apiBases = {
+  telemedicine: readEnv('VITE_TELEMEDICINE_API_BASE', `${services.telemedicine}/api/telemedicine`),
+  telemedSessions: readEnv('VITE_TELEMED_SESSIONS_API_BASE', `${services.telemedicine}/api/telemed`),
 }
 
 // Get auth token from localStorage
@@ -88,30 +99,46 @@ const apiClient = async (url, options = {}) => {
     }
 
     if (!response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      const isJson = contentType.includes('application/json');
+      const payload = isJson ? await response.json() : await response.text();
+      const backendMessage = typeof payload === 'string'
+        ? payload
+        : payload?.message || payload?.error || response.statusText;
+
       if (response.status === 401) {
         clearAuthData();
         window.location.href = '/login';
         throw new Error('Authentication required');
       }
-      const detail =
-        (payload && typeof payload.message === 'string' && payload.message) ||
-        (payload && typeof payload.error === 'string' && payload.error) ||
-        text ||
-        `HTTP error! status: ${response.status}`;
-      const err = new Error(detail);
+      const err = new Error(`HTTP ${response.status} calling ${url}: ${backendMessage}`);
       err.status = response.status;
-      if (payload && typeof payload.error === 'string') {
-        err.code = payload.error;
-      }
+      err.payload = payload;
       throw err;
     }
-
-    return payload;
+    
+    return await response.json();
   } catch (error) {
     console.error('API Error:', error);
     throw error;
   }
 };
+
+const telemedicineClient = async (path, options = {}) => {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
+  const base = apiBases.telemedicine.endsWith('/')
+    ? apiBases.telemedicine.slice(0, -1)
+    : apiBases.telemedicine
+  return apiClient(`${base}${cleanPath}`, options)
+}
+
+const telemedSessionsClient = async (path, options = {}) => {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
+  const base = apiBases.telemedSessions.endsWith('/')
+    ? apiBases.telemedSessions.slice(0, -1)
+    : apiBases.telemedSessions
+  return apiClient(`${base}${cleanPath}`, options)
+}
 
 // API endpoints
 export const API = {
@@ -156,20 +183,22 @@ export const API = {
     }),
   },
 
-  appointments: {
-    /** Doctor directory for booking (appointment service → patient public API). */
-    searchDoctorsForBooking: (specialty) => {
-      const q =
-        specialty != null && specialty !== '' && specialty !== 'All'
-          ? `?specialty=${encodeURIComponent(specialty)}`
-          : ''
-      return apiClient(`${services.appointment}/api/patient/booking/doctors${q}`)
-    },
-    create: (body) =>
-      apiClient(`${services.appointment}/api/patient/appointments`, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      }),
+  carePlans: {
+    create: (payload) => apiClient(`${services.doctor}/api/care-plans`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+    getByDoctor: (doctorId) => apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}`),
+    getByDoctorAndPatient: (doctorId, patientId) =>
+      apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}/patient/${patientId}`),
+  },
+
+  medicines: {
+    getAll: () => apiClient(`${services.doctor}/api/medicines`),
+    create: (payload) => apiClient(`${services.doctor}/api/medicines`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   },
 
   // Admin Endpoints
@@ -185,6 +214,51 @@ export const API = {
     getTransactions: () => apiClient(`${services.patient}/api/admin/transactions`),
   },
 
+  telemedicine: {
+    // Session endpoints
+    createSession: (appointmentId) => telemedicineClient(`/session/${appointmentId}`, { method: 'POST' }),
+    createPatientSession: (patientId) => telemedicineClient(`/session/patient/${patientId}`, { method: 'POST' }),
+    createDirectSession: (data) => telemedicineClient('/session/direct', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    joinSession: (appointmentId) => telemedicineClient(`/session/${appointmentId}/join`),
+    endSession: (appointmentId) => telemedicineClient(`/session/${appointmentId}/end`, { method: 'POST' }),
+    getSession: (appointmentId) => telemedicineClient(`/session/${appointmentId}`),
+
+    // Consultations
+    createConsultation: ({ doctorId, patientId }) => telemedicineClient('/consultations', {
+      method: 'POST',
+      body: JSON.stringify({ doctorId, patientId }),
+    }),
+    scheduleConsultation: ({ doctorId, patientId, scheduledAt }) => telemedicineClient('/consultations/schedule', {
+      method: 'POST',
+      body: JSON.stringify({ doctorId, patientId, scheduledAt }),
+    }),
+    answerConsultation: (consultationId) => telemedicineClient(`/consultations/${consultationId}/answer`, { method: 'POST' }),
+    declineConsultation: (consultationId) => telemedicineClient(`/consultations/${consultationId}/decline`, { method: 'POST' }),
+    endConsultation: (consultationId) => telemedicineClient(`/consultations/${consultationId}/end`, { method: 'POST' }),
+    getConsultation: (consultationId) => telemedicineClient(`/consultations/${consultationId}`),
+    listForPatient: (patientId) => telemedicineClient(`/consultations/patient/${patientId}`),
+    listForDoctor: (doctorId) => telemedicineClient(`/consultations/doctor/${doctorId}`),
+  },
+
+  telemedSessions: {
+    createOrGetByAppointment: (appointmentId, data = {}) =>
+      telemedSessionsClient(`/appointments/${appointmentId}/session`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getByAppointment: (appointmentId) => telemedSessionsClient(`/appointments/${appointmentId}/session`),
+    endByAppointment: (appointmentId, data = {}) =>
+      telemedSessionsClient(`/appointments/${appointmentId}/end`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    listForDoctor: (doctorId) => telemedSessionsClient(`/doctor/${doctorId}/sessions`),
+    listForPatient: (patientId) => telemedSessionsClient(`/patient/${patientId}/sessions`),
+  },
+
   // Auth Endpoints
   auth: {
     login: (credentials) => apiClient(`${services.patient}/api/auth/login`, {
@@ -196,6 +270,22 @@ export const API = {
       body: JSON.stringify(userData),
     }),
   },
+
+  // Payment Endpoints
+  payment: {
+    // Create Stripe checkout session
+    createCheckoutSession: (data) => apiClient(`${services.payment}/api/v1/payments/checkout-session`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    // Get payment by ID
+    getPayment: (paymentId) => apiClient(`${services.payment}/api/v1/payments/${paymentId}`),
+    // Get payment by consultation ID
+    getPaymentByConsultation: (consultationId) => apiClient(`${services.payment}/api/v1/payments/consultation/${consultationId}`),
+    // Get all payments for current patient
+    getMyPayments: () => apiClient(`${services.payment}/api/v1/payments/patient/my-payments`),
+  },
+
 };
 
 export default API;

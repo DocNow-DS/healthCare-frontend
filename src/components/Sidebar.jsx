@@ -7,6 +7,7 @@ import {
   UserGroupIcon, 
   BeakerIcon, 
   VideoCameraIcon,
+  ClipboardDocumentListIcon,
   CreditCardIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
@@ -25,7 +26,8 @@ const navConfigs = {
   Doctor: [
     { name: 'Schedule', href: '/dashboard', icon: HomeIcon },
     { name: 'Appointments', href: '/dashboard/appointments', icon: CalendarIcon },
-    { name: 'Patients', href: '/dashboard/reports', icon: UserGroupIcon },
+    { name: 'Patients', href: '/dashboard/patients', icon: UserGroupIcon },
+    { name: 'Care Plans', href: '/dashboard/care-plans', icon: ClipboardDocumentListIcon },
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
   ],
   Admin: [
@@ -33,7 +35,7 @@ const navConfigs = {
     { name: 'Doctors', href: '/dashboard/doctors-management', icon: UserGroupIcon },
     { name: 'Patients', href: '/dashboard/patients-management', icon: UserGroupIcon },
     { name: 'Management', href: '/dashboard/management', icon: ShieldCheckIcon },
-    { name: 'Transactions', href: '/dashboard/payments', icon: CreditCardIcon },
+    { name: 'Transactions', href: '/dashboard/transactions', icon: CreditCardIcon },
     { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
   ]
 };
@@ -45,10 +47,17 @@ export default function Sidebar({ onLogout }) {
 
   useEffect(() => {
     const { user: authUser } = getAuthData();
+    const resolveRole = (roles) => {
+      const first = Array.isArray(roles) ? String(roles[0] || '').toUpperCase() : '';
+      if (first === 'ADMIN') return 'Admin';
+      if (first === 'DOCTOR') return 'Doctor';
+      return 'Patient';
+    };
+
     if (authUser) {
       setUser({
         username: authUser.username,
-        role: authUser.roles?.[0] || 'PATIENT'
+        role: resolveRole(authUser.roles)
       });
     }
   }, []);

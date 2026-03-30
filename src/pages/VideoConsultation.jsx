@@ -1,103 +1,528 @@
-import { 
-  VideoCameraIcon, 
-  MicrophoneIcon, 
-  ChatBubbleBottomCenterIcon,
-  PhoneXMarkIcon,
-  ShieldCheckIcon,
-  UserIcon
-} from '@heroicons/react/24/solid';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { API } from '../config/api';
+import { ShieldCheckIcon, VideoCameraIcon } from '@heroicons/react/24/solid';
+
+function readAuthUser() {
+   try {
+      const raw = localStorage.getItem('auth_user');
+      return raw ? JSON.parse(raw) : null;
+   } catch {
+      return null;
+   }
+}
 
 export default function VideoConsultation() {
-  return (
-    <div className="h-[calc(100vh-140px)] flex flex-col space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-      <div className="flex items-center justify-between border-b-2 border-slate-50 pb-6">
-        <div className="flex items-center space-x-4">
-           <div className="h-10 w-10 bg-[#182C61] rounded-xl flex items-center justify-center shadow-lg shadow-[#182C61]/20">
-              <VideoCameraIcon className="h-6 w-6 text-white" />
-           </div>
-           <div>
-              <h1 className="text-2xl font-black text-[#182C61] tracking-tighter">Consultation</h1>
-              <p className="text-[#808e9b] mt-1 font-black uppercase tracking-widest text-[8px] flex items-center">
-                 <span className="h-1.5 w-1.5 rounded-full bg-[#eb2f06] mr-1.5 animate-pulse"></span>
-                 AES-256 Secure
-              </p>
-           </div>
-        </div>
-        <div className="hidden lg:flex items-center space-x-2 bg-white border-2 border-slate-50 px-5 py-3 rounded-xl shadow-sm">
-           <div className="text-right">
-              <p className="text-[8px] font-black text-[#808e9b] uppercase tracking-widest text-white">Consultant</p>
-              <p className="text-sm font-black text-[#182C61]">Dr. Sarah Wilson</p>
-           </div>
-           <div className="h-8 w-8 rounded-lg bg-slate-100 overflow-hidden ml-3">
-              <img src="https://i.pravatar.cc/150?u=1" alt="doc" />
-           </div>
-        </div>
+   const authUser = useMemo(() => readAuthUser(), []);
+   const myId = useMemo(() => authUser?.id || authUser?.userId || '', [authUser]);
+   const isDoctor = useMemo(() => {
+      const role = authUser?.role;
+      const roles = authUser?.roles;
+      if (typeof role === 'string') return role.toUpperCase() === 'DOCTOR';
+      if (Array.isArray(roles)) return roles.map(String).some((r) => r.toUpperCase() === 'DOCTOR');
+      return false;
+   }, [authUser]);
+
+   const [availablePatients, setAvailablePatients] = useState([]);
+   const [patientsLoading, setPatientsLoading] = useState(false);
+   const [patientsError, setPatientsError] = useState('');
+   const [selectedPatientId, setSelectedPatientId] = useState('');
+   const [scheduledDate, setScheduledDate] = useState('');
+   const [scheduledTime, setScheduledTime] = useState('');
+
+   const timeOptions = useMemo(() => {
+      const options = [];
+      for (let hour = 0; hour < 24; hour += 1) {
+         for (let minute = 0; minute < 60; minute += 15) {
+            const hh = String(hour).padStart(2, '0');
+            const mm = String(minute).padStart(2, '0');
+            options.push(`${hh}:${mm}`);
+         }
+      }
+      return options;
+   }, []);
+
+   const [myConsultations, setMyConsultations] = useState([]);
+   const [consultationsLoading, setConsultationsLoading] = useState(false);
+
+   const [jitsiUrl, setJitsiUrl] = useState('');
+   const [embedError, setEmbedError] = useState('');
+   const [apiReady, setApiReady] = useState(false);
+   const [isBusy, setIsBusy] = useState(false);
+   const [error, setError] = useState('');
+   const jitsiContainerRef = useRef(null);
+   const jitsiApiRef = useRef(null);
+
+   const normalizeText = (value) => (typeof value === 'string' ? value.trim() : '');
+
+   const isMeaningfulText = (value) => {
+      const text = normalizeText(value);
+      if (!text) return false;
+      const lowered = text.toLowerCase();
+      return lowered !== 'unknown' && lowered !== 'unknown patient' && lowered !== 'n/a' && lowered !== 'null';
+   };
+
+   const resolveRoleLabel = (role) => {
+      if (!role) return '';
+      if (typeof role === 'string') return role.toUpperCase();
+      if (typeof role === 'object') {
+         const fromName = normalizeText(role.name || role.role || role.value || role.authority);
+         return fromName.toUpperCase();
+      }
+      return normalizeText(String(role)).toUpperCase();
+   };
+
+   const resolvePatientId = (patient) => {
+      if (!patient || typeof patient !== 'object') return '';
+      return (
+         patient.id ||
+         patient.userId ||
+         patient._id ||
+         patient.username ||
+         patient.email ||
+         patient.user?.id ||
+         patient.user?._id ||
+         patient.user?.userId ||
+         patient.user?.username ||
+         patient.user?.email ||
+         ''
+      );
+   };
+
+   const resolvePatientName = (patient) => {
+      if (!patient || typeof patient !== 'object') return 'Patient';
+
+      const first = String(patient.firstName || patient.user?.firstName || '').trim();
+      const last = String(patient.lastName || patient.user?.lastName || '').trim();
+      const fullFromParts = `${first} ${last}`.trim();
+
+      const direct = [
+         patient.name,
+         patient.fullName,
+         patient.displayName,
+         patient.username,
+         patient.email,
+         patient.user?.name,
+         patient.user?.fullName,
+         patient.user?.displayName,
+         patient.user?.username,
+         patient.user?.email,
+      ]
+         .map((value) => normalizeText(value))
+         .filter((value) => isMeaningfulText(value))
+         .find(Boolean);
+
+      if (isMeaningfulText(fullFromParts)) return fullFromParts;
+      return direct || 'Patient';
+   };
+
+   const meetingOrigin = useMemo(() => {
+      if (!jitsiUrl) return '';
+      try {
+         return new URL(jitsiUrl).origin;
+      } catch {
+         return '';
+      }
+   }, [jitsiUrl]);
+
+   const parsedMeeting = useMemo(() => {
+      if (!jitsiUrl) return null;
+      try {
+         const url = new URL(jitsiUrl);
+         const roomName = url.pathname.replace(/^\//, '').split('/')[0] || '';
+         if (!roomName) return null;
+         return {
+            domain: url.host,
+            roomName,
+            jwt: url.searchParams.get('jwt') || '',
+         };
+      } catch {
+         return null;
+      }
+   }, [jitsiUrl]);
+
+   useEffect(() => {
+      const disposeCurrentApi = () => {
+         if (jitsiApiRef.current) {
+            jitsiApiRef.current.dispose();
+            jitsiApiRef.current = null;
+         }
+      };
+
+      if (!parsedMeeting || !jitsiContainerRef.current) {
+         disposeCurrentApi();
+         setApiReady(false);
+         setEmbedError('');
+         return undefined;
+      }
+
+      setApiReady(false);
+      setEmbedError('');
+      disposeCurrentApi();
+
+      let cancelled = false;
+      let hasJoined = false;
+      const scriptId = `jitsi-external-api-${parsedMeeting.domain.replace(/[^a-z0-9_-]/gi, '-')}`;
+      const scriptSrc = `https://${parsedMeeting.domain}/external_api.js`;
+
+      const initApi = () => {
+         if (cancelled || !jitsiContainerRef.current || !window.JitsiMeetExternalAPI) {
+            if (!window.JitsiMeetExternalAPI) {
+               setEmbedError('Unable to initialize embedded meeting.');
+            }
+            return;
+         }
+
+         try {
+            const api = new window.JitsiMeetExternalAPI(parsedMeeting.domain, {
+               roomName: parsedMeeting.roomName,
+               parentNode: jitsiContainerRef.current,
+               jwt: parsedMeeting.jwt || undefined,
+               configOverwrite: {
+                  prejoinPageEnabled: true,
+                  startWithAudioMuted: false,
+                  startWithVideoMuted: false,
+                  disableDeepLinking: true,
+               },
+               interfaceConfigOverwrite: {
+                  MOBILE_APP_PROMO: false,
+               },
+            });
+
+            jitsiApiRef.current = api;
+            api.addListener('videoConferenceJoined', () => {
+               if (!cancelled) {
+                  hasJoined = true;
+                  setApiReady(true);
+                  setEmbedError('');
+               }
+            });
+            api.addListener('readyToClose', () => {
+               if (!cancelled) setJitsiUrl('');
+            });
+
+            setTimeout(() => {
+               if (!cancelled && !hasJoined) {
+                  setEmbedError('Embedded meeting is taking too long to load.');
+               }
+            }, 12000);
+         } catch {
+            setEmbedError('Unable to initialize embedded meeting.');
+         }
+      };
+
+      const existingScript = document.getElementById(scriptId);
+      if (existingScript) {
+         if (window.JitsiMeetExternalAPI) {
+            initApi();
+         } else {
+            existingScript.addEventListener('load', initApi, { once: true });
+            existingScript.addEventListener('error', () => {
+               if (!cancelled) setEmbedError('Unable to load Jitsi embed script.');
+            }, { once: true });
+         }
+      } else {
+         const script = document.createElement('script');
+         script.id = scriptId;
+         script.src = scriptSrc;
+         script.async = true;
+         script.onload = initApi;
+         script.onerror = () => {
+            if (!cancelled) setEmbedError('Unable to load Jitsi embed script.');
+         };
+         document.body.appendChild(script);
+      }
+
+      return () => {
+         cancelled = true;
+         disposeCurrentApi();
+      };
+   }, [parsedMeeting]);
+
+   const loadPatientsIfDoctor = async () => {
+      if (!isDoctor) return;
+      setPatientsLoading(true);
+      setPatientsError('');
+      try {
+         const list = await API.patients.getAll();
+         const normalized = Array.isArray(list) ? list : [];
+         const onlyPatients = normalized.filter((item) => {
+            const roles = Array.isArray(item?.roles) ? item.roles : [];
+            if (roles.length === 0) return true;
+            return roles.some((role) => resolveRoleLabel(role).includes('PATIENT'));
+         });
+         setAvailablePatients(onlyPatients);
+      } catch (e) {
+         setPatientsError(e?.message || 'Failed to load patients');
+      } finally {
+         setPatientsLoading(false);
+      }
+   };
+
+   const loadMyConsultations = async () => {
+      if (!myId) return;
+      setConsultationsLoading(true);
+      setError('');
+      try {
+         const list = isDoctor
+            ? await API.telemedSessions.listForDoctor(myId)
+            : await API.telemedSessions.listForPatient(myId);
+         const normalized = Array.isArray(list) ? [...list] : [];
+         normalized.sort((a, b) => {
+            const aTime = new Date(a?.startedAt || a?.createdAt || 0).getTime();
+            const bTime = new Date(b?.startedAt || b?.createdAt || 0).getTime();
+            return bTime - aTime;
+         });
+         setMyConsultations(normalized);
+      } catch (e) {
+         setError(e?.message || 'Failed to load consultations');
+      } finally {
+         setConsultationsLoading(false);
+      }
+   };
+
+   useEffect(() => {
+      loadPatientsIfDoctor();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [isDoctor]);
+
+   useEffect(() => {
+      loadMyConsultations();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [myId, isDoctor]);
+
+   useEffect(() => {
+      if (!myId) return;
+      const timer = setInterval(() => {
+         loadMyConsultations();
+      }, 7000);
+      return () => clearInterval(timer);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [myId, isDoctor]);
+
+   useEffect(() => {
+      if (isDoctor) return;
+      if (jitsiUrl) return;
+      const firstWithUrl = myConsultations.find((c) => {
+         const hasUrl = Boolean(c?.sessionUrl || c?.jitsiUrl);
+         const status = String(c?.status || '').toUpperCase();
+         return hasUrl && status !== 'ENDED';
+      });
+      if (firstWithUrl) {
+         setJitsiUrl(firstWithUrl.sessionUrl || firstWithUrl.jitsiUrl || '');
+      }
+   }, [isDoctor, jitsiUrl, myConsultations]);
+
+   const handleGenerateLink = async () => {
+      if (!isDoctor) {
+         setError('Only doctors can schedule consultations');
+         return;
+      }
+      if (!myId) {
+         setError('Missing doctor id. Please login again.');
+         return;
+      }
+      if (!selectedPatientId) {
+         setError('Select a patient');
+         return;
+      }
+      if (!scheduledDate || !scheduledTime) {
+         setError('Select date and time');
+         return;
+      }
+      if (isBusy) return;
+
+      const appointmentId = `${myId}-${selectedPatientId}-${scheduledDate}-${scheduledTime}`
+         .toLowerCase()
+         .replace(/[^a-z0-9_-]/g, '-');
+
+      setIsBusy(true);
+      setError('');
+      try {
+         const created = await API.telemedSessions.createOrGetByAppointment(appointmentId, {
+            doctorId: myId,
+            patientId: selectedPatientId,
+            forceNew: true,
+         });
+         setJitsiUrl(created?.sessionUrl || created?.jitsiUrl || '');
+         await loadMyConsultations();
+      } catch (e) {
+         const status = e?.status;
+         if (status === 403) {
+            setError('403 Forbidden: your token is valid but you are not authorized as DOCTOR.');
+         } else {
+            setError(e?.message || 'Failed to generate link');
+         }
+      } finally {
+         setIsBusy(false);
+      }
+   };
+
+   return (
+      <div className="h-[calc(100vh-60px)] flex flex-col space-y-2 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+         <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+            <div className="flex items-center space-x-3">
+               <div className="h-8 w-8 bg-primary-500 rounded-lg flex items-center justify-center shadow-lg shadow-primary-500/20">
+                  <VideoCameraIcon className="h-5 w-5 text-white" />
+               </div>
+               <div>
+                  <h1 className="text-xl font-black text-primary-500 tracking-tighter">Consultation</h1>
+                  <p className="text-[#808e9b] font-black uppercase tracking-widest text-[7px] flex items-center">
+                     <span className="h-1 w-1 rounded-full bg-accent-red mr-1 animate-pulse"></span>
+                     AES-256 Secure
+                  </p>
+               </div>
+            </div>
+         </div>
+
+         {error ? (
+            <div className="bg-white border border-slate-50 px-3 py-2 rounded-lg shadow-sm text-[10px] font-black text-accent-red uppercase tracking-widest">
+               {error}
+            </div>
+         ) : null}
+
+         {isDoctor ? (
+            <div className="bg-white border border-slate-50 p-3 rounded-lg shadow-sm">
+               <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-black text-primary-500 tracking-tight">Schedule Consultation</h3>
+                  <span className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest">
+                     {patientsLoading ? 'Loading…' : `${availablePatients.length}`}
+                  </span>
+               </div>
+
+               {patientsError ? (
+                  <div className="text-[10px] font-bold text-accent-red mb-2">{patientsError}</div>
+               ) : null}
+
+               <div className="flex flex-col md:flex-row gap-2 md:items-center">
+                  <select
+                     value={selectedPatientId}
+                     onChange={(e) => setSelectedPatientId(e.target.value)}
+                     disabled={patientsLoading || isBusy}
+                     className="flex-1 px-2 py-2 bg-slate-50 border border-transparent rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500/5 focus:border-primary-500 text-xs text-[#1e272e] font-black transition-all"
+                  >
+                     <option value="">{patientsLoading ? 'Loading patients…' : 'Select a patient…'}</option>
+                     {availablePatients.map((p, index) => {
+                        const pid = resolvePatientId(p);
+                        const label = `${resolvePatientName(p)}${pid ? ` (ID: ${pid})` : ''}`;
+                        return (
+                           <option key={pid || `patient-${index}`} value={pid} disabled={!pid}>
+                              {label}
+                           </option>
+                        );
+                     })}
+                  </select>
+
+                  <input
+                     id="scheduledDate"
+                     name="scheduledDate"
+                     type="date"
+                     value={scheduledDate}
+                     onChange={(e) => setScheduledDate(e.target.value)}
+                     disabled={isBusy}
+                     className="flex-1 px-2 py-2 bg-slate-50 border border-transparent rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500/5 focus:border-primary-500 text-xs text-[#1e272e] font-black transition-all"
+                  />
+
+                  <select
+                     id="scheduledTime"
+                     name="scheduledTime"
+                     value={scheduledTime}
+                     onChange={(e) => setScheduledTime(e.target.value)}
+                     disabled={isBusy}
+                     className="flex-1 px-2 py-2 bg-slate-50 border border-transparent rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500/5 focus:border-primary-500 text-xs text-[#1e272e] font-black transition-all"
+                  >
+                     <option value="">Select time…</option>
+                     {timeOptions.map((t) => (
+                        <option key={t} value={t}>
+                           {t}
+                        </option>
+                     ))}
+                  </select>
+
+                  <button
+                     type="button"
+                     onClick={handleGenerateLink}
+                     disabled={isBusy || !selectedPatientId || !scheduledDate || !scheduledTime}
+                     className="px-4 py-2 text-[10px] font-black rounded-md bg-primary-500 text-white hover:bg-primary-500/90 transition-all uppercase tracking-widest disabled:opacity-60"
+                  >
+                     {isBusy ? 'Working…' : 'Generate Link'}
+                  </button>
+               </div>
+            </div>
+         ) : null}
+
+         <div className="bg-white border border-slate-50 p-3 rounded-lg shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+               <h3 className="text-xs font-black text-primary-500 tracking-tight">My Consultations</h3>
+               <span className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest">
+                  {consultationsLoading ? 'Loading…' : `${myConsultations.length}`}
+               </span>
+            </div>
+
+            <div className="space-y-2 max-h-[220px] overflow-y-auto">
+               {myConsultations.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded-md border border-slate-50">
+                     <div>
+                        <div className="text-[11px] font-black text-[#1e272e]">
+                           {c.status}
+                           {c.startedAt ? ` • ${new Date(c.startedAt).toLocaleString()}` : ''}
+                        </div>
+                        <div className="text-[9px] font-bold text-[#808e9b]">Room: {c.roomName || c.roomId}</div>
+                     </div>
+                     {(c.sessionUrl || c.jitsiUrl) ? (
+                        <div className="flex items-center gap-2">
+                           <button
+                              type="button"
+                              onClick={() => {
+                                 const link = c.sessionUrl || c.jitsiUrl || '';
+                                 setJitsiUrl(link);
+                              }}
+                              className="px-2 py-1 text-[9px] font-black rounded-md border border-slate-50 text-primary-500 hover:border-primary-500 transition-all uppercase tracking-widest"
+                           >
+                              Join Here
+                           </button>
+                        </div>
+                     ) : null}
+                  </div>
+               ))}
+
+               {!consultationsLoading && myConsultations.length === 0 ? (
+                  <div className="text-[10px] font-bold text-[#808e9b]">No consultations</div>
+               ) : null}
+            </div>
+         </div>
+
+         {jitsiUrl ? (
+            <div className="flex-1 bg-slate-900 rounded-4xl shadow-xl relative overflow-hidden ring-4 ring-white group min-h-[420px]">
+               <div ref={jitsiContainerRef} className="absolute inset-0 w-full h-full" />
+               <div className="absolute top-6 left-6 p-4 bg-white/10 backdrop-blur-md rounded-xl border border-white/10 z-10 flex items-center space-x-2">
+                  <ShieldCheckIcon className="h-4 w-4 text-accent-red" />
+                  <span className="text-[10px] font-black text-white uppercase tracking-widest">Secure</span>
+               </div>
+               {embedError ? (
+                  <div className="absolute bottom-6 right-6 z-10 bg-black/45 border border-white/20 rounded-md px-3 py-2 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                     <span>{embedError} Open meeting in new tab.</span>
+                     <a
+                        href={jitsiUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2 py-1 rounded-md border border-white/30 hover:border-white/60 transition-all"
+                     >
+                        Open
+                     </a>
+                  </div>
+               ) : null}
+               {!embedError && !apiReady ? (
+                  <div className="absolute bottom-6 right-6 z-10 bg-black/45 border border-white/20 rounded-md px-3 py-2 text-white text-[10px] font-black uppercase tracking-widest">
+                     Joining secure meeting...
+                  </div>
+               ) : null}
+               {meetingOrigin ? (
+                  <div className="absolute bottom-6 left-6 z-10 bg-black/45 border border-white/20 rounded-md px-3 py-2 text-white text-[10px] font-black uppercase tracking-widest">
+                     Host: {meetingOrigin}
+                  </div>
+               ) : null}
+            </div>
+         ) : null}
       </div>
-
-      <div className="flex-1 flex gap-8 min-h-0 relative">
-        {/* Main Video Area */}
-        <div className="flex-1 bg-slate-900 rounded-[2rem] shadow-xl relative overflow-hidden ring-4 ring-white group">
-          {/* Main Feed */}
-          <div className="absolute inset-0 flex items-center justify-center opacity-40">
-            <UserIcon className="h-48 w-48 text-white/10" />
-          </div>
-          
-          {/* Self Feed */}
-          <div className="absolute top-6 right-6 w-48 h-32 bg-slate-800 rounded-2xl border-2 border-white/10 shadow-xl z-20 overflow-hidden">
-             <p className="absolute bottom-2 left-4 text-[8px] font-black text-white/50 uppercase tracking-widest">Self View</p>
-          </div>
-
-          {/* Controls */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center space-x-4 z-30">
-             {[
-               { icon: MicrophoneIcon, color: 'bg-white/10', text: 'white', active: true },
-               { icon: VideoCameraIcon, color: 'bg-white/10', text: 'white', active: true },
-               { icon: ChatBubbleBottomCenterIcon, color: 'bg-white/10', text: 'white', active: false },
-             ].map((btn, i) => (
-                <button key={i} className={`p-4 rounded-xl ${btn.color} text-${btn.text} backdrop-blur-md border border-white/10 hover:scale-105 transition-all`}>
-                   <btn.icon className="h-5 w-5" />
-                </button>
-             ))}
-             <button className="p-6 rounded-2xl bg-[#eb2f06] text-white shadow-lg hover:scale-105 transition-all">
-                <PhoneXMarkIcon className="h-6 w-6" />
-             </button>
-          </div>
-
-          {/* Overlays */}
-          <div className="absolute top-6 left-6 p-4 bg-white/10 backdrop-blur-md rounded-xl border border-white/10 z-10 flex items-center space-x-2">
-             <ShieldCheckIcon className="h-4 w-4 text-[#eb2f06]" />
-             <span className="text-[10px] font-black text-white uppercase tracking-widest">Secure</span>
-          </div>
-        </div>
-
-        {/* Action Panel */}
-        <div className="w-80 hidden xl:flex flex-col gap-6">
-           <div className="bg-white border-2 border-slate-50 p-8 rounded-[2rem] shadow-xl shadow-[#182C61]/5 flex-1">
-              <div className="flex items-center justify-between mb-6">
-                 <h3 className="text-lg font-black text-[#182C61] tracking-tight">Log</h3>
-              </div>
-              <div className="space-y-4">
-                 {[
-                   'Patient joined',
-                   'Searching consultant...',
-                   'Handshake complete'
-                 ].map((log, i) => (
-                    <div key={i} className="flex items-start space-x-3 opacity-50">
-                       <div className="h-1.5 w-1.5 rounded-full bg-[#182C61] mt-1.5"></div>
-                       <p className="text-[11px] font-bold text-[#808e9b]">{log}</p>
-                    </div>
-                 ))}
-              </div>
-           </div>
-           
-           <div className="bg-[#182C61] p-8 rounded-[2rem] shadow-xl shadow-[#182C61]/20">
-              <h3 className="text-white font-black text-base mb-4">Support</h3>
-              <button className="w-full py-3 bg-white text-[#182C61] font-black rounded-xl hover:bg-[#eb2f06] hover:text-white transition-all uppercase tracking-widest text-[9px]">
-                Support Portal
-              </button>
-           </div>
-        </div>
-      </div>
-    </div>
-  );
+   );
 }
