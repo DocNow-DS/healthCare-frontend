@@ -13,7 +13,8 @@ import {
   ArrowRightOnRectangleIcon,
   ShieldCheckIcon,
   Squares2X2Icon,
-  BellIcon
+  BellIcon,
+  UserCircleIcon
 } from '@heroicons/react/24/outline';
 
 const navConfigs = {
@@ -24,6 +25,7 @@ const navConfigs = {
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
     { name: 'Payments', href: '/dashboard/payments', icon: CreditCardIcon },
     { name: 'Notifications', href: '/dashboard/notifications', icon: BellIcon },
+    { name: 'Profile', href: '/dashboard/profile', icon: UserCircleIcon },
   ],
   Doctor: [
     { name: 'Schedule', href: '/dashboard', icon: HomeIcon },
@@ -31,6 +33,7 @@ const navConfigs = {
     { name: 'Patients', href: '/dashboard/patients', icon: UserGroupIcon },
     { name: 'Care Plans', href: '/dashboard/care-plans', icon: ClipboardDocumentListIcon },
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
+    { name: 'Profile', href: '/dashboard/profile', icon: UserCircleIcon },
   ],
   Admin: [
     { name: 'Admin Hub', href: '/dashboard', icon: Squares2X2Icon },
