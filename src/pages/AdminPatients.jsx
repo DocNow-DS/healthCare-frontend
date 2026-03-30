@@ -43,23 +43,19 @@ export default function AdminPatients() {
       
       // Transform and combine data
       const transformedPatients = patientsData.map((patient, index) => {
-        const correspondingUser = patientUsers.find(user => user.id === patient.userId);
+        const correspondingUser = patientUsers.find(user => user.id === patient.userId || user.id === patient.id);
         return {
           id: patient.id,
+          userId: correspondingUser?.id,
           name: patient.name || correspondingUser?.username || 'Unknown',
-          email: correspondingUser?.email || 'N/A',
-          phone: patient.phone || 'N/A',
-          age: patient.age || 'Not specified',
-          gender: patient.gender || 'Not specified',
-          bloodGroup: patient.bloodGroup || 'Not specified',
-          registrationDate: correspondingUser ? new Date().toISOString().split('T')[0] : 'Not specified',
-          lastVisit: patient.lastVisit || 'Not specified',
-          totalVisits: patient.totalVisits || 0,
-          status: correspondingUser?.enabled ? 'active' : 'inactive',
-          assignedDoctor: patient.assignedDoctor || 'Not assigned',
-          medicalConditions: patient.medicalHistory || 'None',
-          insuranceProvider: patient.insuranceProvider || 'Not specified',
-          address: patient.address || 'Not provided'
+          email: correspondingUser?.email || patient.email || 'N/A',
+          phone: patient.phone || correspondingUser?.phone || 'N/A',
+          age: patient.age || correspondingUser?.age || 'Not specified',
+          gender: patient.gender || correspondingUser?.gender || 'Not specified',
+          address: patient.address || correspondingUser?.address || 'Not provided',
+          medicalHistory: patient.medicalHistory || correspondingUser?.medicalHistory || 'None',
+          createdAt: correspondingUser?.createdAt || patient.createdAt,
+          status: correspondingUser?.enabled !== undefined ? (correspondingUser.enabled ? 'active' : 'inactive') : 'active'
         };
       });
       
@@ -106,8 +102,8 @@ export default function AdminPatients() {
   const filteredPatients = patients.filter(patient =>
     patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     patient.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.assignedDoctor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.medicalConditions.toLowerCase().includes(searchTerm.toLowerCase())
+    patient.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    patient.medicalHistory.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getStatusIcon = (status) => {
@@ -247,7 +243,7 @@ export default function AdminPatients() {
             <div className="ml-4">
               <p className="text-sm font-medium text-[#808e9b]">Avg Age</p>
               <p className="text-2xl font-black text-[#182C61]">
-                {Math.round(patients.reduce((sum, p) => sum + p.age, 0) / patients.length)}
+                {Math.round(patients.reduce((sum, p) => sum + (typeof p.age === 'number' ? p.age : 0), 0) / patients.length) || 'N/A'}
               </p>
             </div>
           </div>
@@ -281,16 +277,16 @@ export default function AdminPatients() {
                   Age/Gender
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Blood Group
+                  Contact
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Assigned Doctor
+                  Address
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Last Visit
+                  Medical History
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total Visits
+                  Registered
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
@@ -307,7 +303,6 @@ export default function AdminPatients() {
                     <div>
                       <div className="text-sm font-medium text-gray-900">{patient.name}</div>
                       <div className="text-sm text-gray-500">{patient.email}</div>
-                      <div className="text-sm text-gray-500">{patient.phone}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -315,16 +310,18 @@ export default function AdminPatients() {
                     <div className="text-sm text-gray-500">{patient.gender}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{patient.bloodGroup}</div>
+                    <div className="text-sm text-gray-900">{patient.phone}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{patient.assignedDoctor}</div>
+                    <div className="text-sm text-gray-900 max-w-[150px] truncate" title={patient.address}>{patient.address}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{patient.lastVisit}</div>
+                    <div className="text-sm text-gray-900 max-w-[150px] truncate" title={patient.medicalHistory}>{patient.medicalHistory}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{patient.totalVisits}</div>
+                    <div className="text-sm text-gray-900">
+                      {patient.createdAt ? new Date(patient.createdAt).toLocaleDateString() : 'N/A'}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {getStatusBadge(patient.status)}
