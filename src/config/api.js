@@ -271,6 +271,8 @@ export const API = {
     getPayment: (paymentId) => apiClient(`${services.payment}/api/v1/payments/${paymentId}`),
     // Get payment by consultation ID
     getPaymentByConsultation: (consultationId) => apiClient(`${services.payment}/api/v1/payments/consultation/${consultationId}`),
+    // Get payment by Stripe checkout session ID
+    getPaymentBySession: (sessionId) => apiClient(`${services.payment}/api/v1/payments/session/${sessionId}`),
     // Get all payments for current patient
     getMyPayments: () => apiClient(`${services.payment}/api/v1/payments/patient/my-payments`),
   },
