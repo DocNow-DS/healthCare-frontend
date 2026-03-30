@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { API } from '../config/api';
 import { ShieldCheckIcon, VideoCameraIcon } from '@heroicons/react/24/solid';
 
@@ -45,198 +45,40 @@ export default function VideoConsultation() {
    const [consultationsLoading, setConsultationsLoading] = useState(false);
 
    const [jitsiUrl, setJitsiUrl] = useState('');
-   const [embedError, setEmbedError] = useState('');
-   const [apiReady, setApiReady] = useState(false);
+   const [frameLoaded, setFrameLoaded] = useState(false);
+   const [embedStuck, setEmbedStuck] = useState(false);
    const [isBusy, setIsBusy] = useState(false);
    const [error, setError] = useState('');
-   const jitsiContainerRef = useRef(null);
-   const jitsiApiRef = useRef(null);
 
-   const normalizeText = (value) => (typeof value === 'string' ? value.trim() : '');
-
-   const isMeaningfulText = (value) => {
-      const text = normalizeText(value);
-      if (!text) return false;
-      const lowered = text.toLowerCase();
-      return lowered !== 'unknown' && lowered !== 'unknown patient' && lowered !== 'n/a' && lowered !== 'null';
-   };
-
-   const resolveRoleLabel = (role) => {
-      if (!role) return '';
-      if (typeof role === 'string') return role.toUpperCase();
-      if (typeof role === 'object') {
-         const fromName = normalizeText(role.name || role.role || role.value || role.authority);
-         return fromName.toUpperCase();
-      }
-      return normalizeText(String(role)).toUpperCase();
-   };
-
-   const resolvePatientId = (patient) => {
-      if (!patient || typeof patient !== 'object') return '';
-      return (
-         patient.id ||
-         patient.userId ||
-         patient._id ||
-         patient.username ||
-         patient.email ||
-         patient.user?.id ||
-         patient.user?._id ||
-         patient.user?.userId ||
-         patient.user?.username ||
-         patient.user?.email ||
-         ''
-      );
-   };
-
-   const resolvePatientName = (patient) => {
-      if (!patient || typeof patient !== 'object') return 'Patient';
-
-      const first = String(patient.firstName || patient.user?.firstName || '').trim();
-      const last = String(patient.lastName || patient.user?.lastName || '').trim();
-      const fullFromParts = `${first} ${last}`.trim();
-
-      const direct = [
-         patient.name,
-         patient.fullName,
-         patient.displayName,
-         patient.username,
-         patient.email,
-         patient.user?.name,
-         patient.user?.fullName,
-         patient.user?.displayName,
-         patient.user?.username,
-         patient.user?.email,
-      ]
-         .map((value) => normalizeText(value))
-         .filter((value) => isMeaningfulText(value))
-         .find(Boolean);
-
-      if (isMeaningfulText(fullFromParts)) return fullFromParts;
-      return direct || 'Patient';
-   };
-
-   const meetingOrigin = useMemo(() => {
+   const embedUrl = useMemo(() => {
       if (!jitsiUrl) return '';
       try {
-         return new URL(jitsiUrl).origin;
-      } catch {
-         return '';
-      }
-   }, [jitsiUrl]);
-
-   const parsedMeeting = useMemo(() => {
-      if (!jitsiUrl) return null;
-      try {
          const url = new URL(jitsiUrl);
-         const roomName = url.pathname.replace(/^\//, '').split('/')[0] || '';
-         if (!roomName) return null;
-         return {
-            domain: url.host,
-            roomName,
-            jwt: url.searchParams.get('jwt') || '',
-         };
+         const hashParams = new URLSearchParams((url.hash || '').replace(/^#/, ''));
+         hashParams.set('config.prejoinPageEnabled', 'false');
+         hashParams.set('config.startWithAudioMuted', 'false');
+         hashParams.set('config.startWithVideoMuted', 'false');
+         hashParams.set('config.disableDeepLinking', 'true');
+         url.hash = hashParams.toString();
+         return url.toString();
       } catch {
-         return null;
+         return jitsiUrl;
       }
    }, [jitsiUrl]);
 
    useEffect(() => {
-      const disposeCurrentApi = () => {
-         if (jitsiApiRef.current) {
-            jitsiApiRef.current.dispose();
-            jitsiApiRef.current = null;
-         }
-      };
-
-      if (!parsedMeeting || !jitsiContainerRef.current) {
-         disposeCurrentApi();
-         setApiReady(false);
-         setEmbedError('');
-         return undefined;
+      if (!jitsiUrl) {
+         setFrameLoaded(false);
+         setEmbedStuck(false);
+         return;
       }
-
-      setApiReady(false);
-      setEmbedError('');
-      disposeCurrentApi();
-
-      let cancelled = false;
-      let hasJoined = false;
-      const scriptId = `jitsi-external-api-${parsedMeeting.domain.replace(/[^a-z0-9_-]/gi, '-')}`;
-      const scriptSrc = `https://${parsedMeeting.domain}/external_api.js`;
-
-      const initApi = () => {
-         if (cancelled || !jitsiContainerRef.current || !window.JitsiMeetExternalAPI) {
-            if (!window.JitsiMeetExternalAPI) {
-               setEmbedError('Unable to initialize embedded meeting.');
-            }
-            return;
-         }
-
-         try {
-            const api = new window.JitsiMeetExternalAPI(parsedMeeting.domain, {
-               roomName: parsedMeeting.roomName,
-               parentNode: jitsiContainerRef.current,
-               jwt: parsedMeeting.jwt || undefined,
-               configOverwrite: {
-                  prejoinPageEnabled: true,
-                  startWithAudioMuted: false,
-                  startWithVideoMuted: false,
-                  disableDeepLinking: true,
-               },
-               interfaceConfigOverwrite: {
-                  MOBILE_APP_PROMO: false,
-               },
-            });
-
-            jitsiApiRef.current = api;
-            api.addListener('videoConferenceJoined', () => {
-               if (!cancelled) {
-                  hasJoined = true;
-                  setApiReady(true);
-                  setEmbedError('');
-               }
-            });
-            api.addListener('readyToClose', () => {
-               if (!cancelled) setJitsiUrl('');
-            });
-
-            setTimeout(() => {
-               if (!cancelled && !hasJoined) {
-                  setEmbedError('Embedded meeting is taking too long to load.');
-               }
-            }, 12000);
-         } catch {
-            setEmbedError('Unable to initialize embedded meeting.');
-         }
-      };
-
-      const existingScript = document.getElementById(scriptId);
-      if (existingScript) {
-         if (window.JitsiMeetExternalAPI) {
-            initApi();
-         } else {
-            existingScript.addEventListener('load', initApi, { once: true });
-            existingScript.addEventListener('error', () => {
-               if (!cancelled) setEmbedError('Unable to load Jitsi embed script.');
-            }, { once: true });
-         }
-      } else {
-         const script = document.createElement('script');
-         script.id = scriptId;
-         script.src = scriptSrc;
-         script.async = true;
-         script.onload = initApi;
-         script.onerror = () => {
-            if (!cancelled) setEmbedError('Unable to load Jitsi embed script.');
-         };
-         document.body.appendChild(script);
-      }
-
-      return () => {
-         cancelled = true;
-         disposeCurrentApi();
-      };
-   }, [parsedMeeting]);
+      setFrameLoaded(false);
+      setEmbedStuck(false);
+      const timer = setTimeout(() => {
+         if (!frameLoaded) setEmbedStuck(true);
+      }, 12000);
+      return () => clearTimeout(timer);
+   }, [jitsiUrl, frameLoaded]);
 
    const loadPatientsIfDoctor = async () => {
       if (!isDoctor) return;
@@ -244,13 +86,7 @@ export default function VideoConsultation() {
       setPatientsError('');
       try {
          const list = await API.patients.getAll();
-         const normalized = Array.isArray(list) ? list : [];
-         const onlyPatients = normalized.filter((item) => {
-            const roles = Array.isArray(item?.roles) ? item.roles : [];
-            if (roles.length === 0) return true;
-            return roles.some((role) => resolveRoleLabel(role).includes('PATIENT'));
-         });
-         setAvailablePatients(onlyPatients);
+         setAvailablePatients(Array.isArray(list) ? list : []);
       } catch (e) {
          setPatientsError(e?.message || 'Failed to load patients');
       } finally {
@@ -401,11 +237,11 @@ export default function VideoConsultation() {
                      className="flex-1 px-2 py-2 bg-slate-50 border border-transparent rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500/5 focus:border-primary-500 text-xs text-[#1e272e] font-black transition-all"
                   >
                      <option value="">{patientsLoading ? 'Loading patients…' : 'Select a patient…'}</option>
-                     {availablePatients.map((p, index) => {
-                        const pid = resolvePatientId(p);
-                        const label = `${resolvePatientName(p)}${pid ? ` (ID: ${pid})` : ''}`;
+                     {availablePatients.map((p) => {
+                        const pid = p?.id || p?.userId;
+                        const label = `${p?.name || p?.username || 'Patient'} (ID: ${pid})`;
                         return (
-                           <option key={pid || `patient-${index}`} value={pid} disabled={!pid}>
+                           <option key={pid} value={pid}>
                               {label}
                            </option>
                         );
@@ -493,32 +329,26 @@ export default function VideoConsultation() {
 
          {jitsiUrl ? (
             <div className="flex-1 bg-slate-900 rounded-4xl shadow-xl relative overflow-hidden ring-4 ring-white group min-h-[420px]">
-               <div ref={jitsiContainerRef} className="absolute inset-0 w-full h-full" />
+               <iframe
+                  title="Telemedicine session"
+                  src={embedUrl}
+                  className="absolute inset-0 w-full h-full"
+                  style={{ border: 0 }}
+                  allow="camera https://meet.jit.si; microphone https://meet.jit.si; display-capture https://meet.jit.si; autoplay; fullscreen"
+                  allowFullScreen
+                  referrerPolicy="no-referrer"
+                  onLoad={() => {
+                     setFrameLoaded(true);
+                     setEmbedStuck(false);
+                  }}
+               />
                <div className="absolute top-6 left-6 p-4 bg-white/10 backdrop-blur-md rounded-xl border border-white/10 z-10 flex items-center space-x-2">
                   <ShieldCheckIcon className="h-4 w-4 text-accent-red" />
                   <span className="text-[10px] font-black text-white uppercase tracking-widest">Secure</span>
                </div>
-               {embedError ? (
-                  <div className="absolute bottom-6 right-6 z-10 bg-black/45 border border-white/20 rounded-md px-3 py-2 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
-                     <span>{embedError} Open meeting in new tab.</span>
-                     <a
-                        href={jitsiUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2 py-1 rounded-md border border-white/30 hover:border-white/60 transition-all"
-                     >
-                        Open
-                     </a>
-                  </div>
-               ) : null}
-               {!embedError && !apiReady ? (
+               {embedStuck ? (
                   <div className="absolute bottom-6 right-6 z-10 bg-black/45 border border-white/20 rounded-md px-3 py-2 text-white text-[10px] font-black uppercase tracking-widest">
-                     Joining secure meeting...
-                  </div>
-               ) : null}
-               {meetingOrigin ? (
-                  <div className="absolute bottom-6 left-6 z-10 bg-black/45 border border-white/20 rounded-md px-3 py-2 text-white text-[10px] font-black uppercase tracking-widest">
-                     Host: {meetingOrigin}
+                     Loading stuck. Reload the page and rejoin this meeting.
                   </div>
                ) : null}
             </div>
