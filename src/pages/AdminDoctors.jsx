@@ -35,20 +35,18 @@ export default function AdminDoctors() {
       // Transform the data to match the expected format
       const transformedDoctors = doctorsData.map(doctor => ({
         id: doctor.id,
-        name: `${doctor.firstName} ${doctor.lastName}`,
-        email: doctor.email,
-        phone: doctor.phoneNumber || 'N/A',
-        specialization: doctor.specialization || 'Not specified',
+        name: doctor.name || doctor.username || 'Unknown',
+        email: doctor.email || 'N/A',
+        phone: doctor.phone || 'N/A',
+        specialty: doctor.specialty || 'Not specified',
         experience: doctor.yearsOfExperience ? `${doctor.yearsOfExperience} years` : 'Not specified',
-        status: doctor.isActive ? 'active' : 'inactive',
-        patients: 'Not available', // Backend doesn't provide this data
-        rating: 'Not available', // Backend doesn't provide this data
-        isVerified: doctor.isVerified,
+        status: doctor.enabled !== false ? 'active' : 'inactive',
+        isVerified: doctor.isVerified || false,
         licenseNumber: doctor.licenseNumber || 'Not provided',
         hospitalName: doctor.hospitalName || 'Not specified',
         education: doctor.education || 'Not specified',
-        about: doctor.about || 'No description available',
-        profileImageUrl: doctor.profileImageUrl
+        department: doctor.department || 'Not specified',
+        qualifications: doctor.qualifications || 'Not specified'
       }));
       
       setDoctors(transformedDoctors);
@@ -98,7 +96,7 @@ export default function AdminDoctors() {
   const filteredDoctors = doctors.filter(doctor =>
     doctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     doctor.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    doctor.specialization.toLowerCase().includes(searchTerm.toLowerCase())
+    doctor.specialty.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getStatusIcon = (status) => {
@@ -236,9 +234,9 @@ export default function AdminDoctors() {
               </div>
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-[#808e9b]">Avg Rating</p>
+              <p className="text-sm font-medium text-[#808e9b]">Verified</p>
               <p className="text-2xl font-black text-[#182C61]">
-                {(doctors.reduce((sum, d) => sum + d.rating, 0) / doctors.length).toFixed(1)}
+                {doctors.filter(d => d.isVerified).length}
               </p>
             </div>
           </div>
@@ -269,16 +267,16 @@ export default function AdminDoctors() {
                   Doctor
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Specialization
+                  Specialty
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Experience
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Patients
+                  Department
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Rating
+                  Qualifications
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
@@ -299,19 +297,18 @@ export default function AdminDoctors() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{doctor.specialization}</div>
+                    <div className="text-sm text-gray-900">{doctor.specialty}</div>
+                    <div className="text-xs text-gray-500">{doctor.licenseNumber}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">{doctor.experience}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{doctor.patients}</div>
+                    <div className="text-sm text-gray-900">{doctor.department}</div>
+                    <div className="text-xs text-gray-500">{doctor.hospitalName}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <span className="text-sm text-gray-900">{doctor.rating}</span>
-                      <span className="text-yellow-400 ml-1">★</span>
-                    </div>
+                    <div className="text-sm text-gray-900 max-w-[150px] truncate" title={doctor.qualifications}>{doctor.qualifications}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {getStatusBadge(doctor.status)}
@@ -330,8 +327,9 @@ export default function AdminDoctors() {
                       </button>
                       <button
                         onClick={() => handleVerifyDoctor(doctor.id)}
-                        className="text-green-600 hover:text-green-900"
-                        title="Verify Doctor"
+                        className={`${doctor.isVerified ? 'text-gray-400 cursor-not-allowed' : 'text-green-600 hover:text-green-900'}`}
+                        title={doctor.isVerified ? 'Already Verified' : 'Verify Doctor'}
+                        disabled={doctor.isVerified}
                       >
                         <CheckCircleIcon className="h-5 w-5" />
                       </button>
