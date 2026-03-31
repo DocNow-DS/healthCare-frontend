@@ -59,6 +59,7 @@ export default function DoctorCarePlans() {
   const [addingMedicine, setAddingMedicine] = useState(false);
   const [addingServiceCatalog, setAddingServiceCatalog] = useState(false);
   const [isMedicineModalOpen, setIsMedicineModalOpen] = useState(false);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [editingMedicineId, setEditingMedicineId] = useState('');
   const [updatingMedicine, setUpdatingMedicine] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState('');
@@ -627,13 +628,22 @@ export default function DoctorCarePlans() {
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-lg font-black text-[#182C61]">Pre-Visit Service Catalog</h2>
-          <button
-            type="button"
-            onClick={loadServiceCatalog}
-            className="px-3 py-1.5 rounded-lg bg-[#182C61] text-white text-xs font-black hover:bg-[#182C61]/85"
-          >
-            Refresh Services
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setIsServiceModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg border border-[#182C61] text-[#182C61] text-xs font-black hover:bg-[#182C61]/5"
+            >
+              View Services
+            </button>
+            <button
+              type="button"
+              onClick={loadServiceCatalog}
+              className="px-3 py-1.5 rounded-lg bg-[#182C61] text-white text-xs font-black hover:bg-[#182C61]/85"
+            >
+              Refresh Services
+            </button>
+          </div>
         </div>
 
         {serviceCatalogError ? (
@@ -679,68 +689,7 @@ export default function DoctorCarePlans() {
           ) : serviceCatalog.length === 0 ? (
             <p className="text-xs font-bold text-[#808e9b]">No pre-visit services in catalog yet.</p>
           ) : (
-            <div className="space-y-2">
-              {serviceCatalog.map((item) => (
-                <div key={item.id || item.serviceName} className="p-3 rounded-lg bg-white border border-slate-100">
-                  {editingServiceId === item.id ? (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                      <input
-                        className="px-3 py-2 rounded-lg border border-slate-200"
-                        placeholder="Service name"
-                        value={editServiceCatalogForm.serviceName}
-                        onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, serviceName: e.target.value }))}
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="px-3 py-2 rounded-lg border border-slate-200"
-                        placeholder="Price (LKR)"
-                        value={editServiceCatalogForm.price}
-                        onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, price: e.target.value }))}
-                      />
-                      <input
-                        className="px-3 py-2 rounded-lg border border-slate-200"
-                        placeholder="Notes"
-                        value={editServiceCatalogForm.notes}
-                        onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, notes: e.target.value }))}
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          disabled={updatingServiceCatalog}
-                          onClick={() => handleUpdateServiceCatalog(item.id)}
-                          className="px-3 py-1.5 rounded-lg bg-[#eb2f06] text-white text-xs font-black disabled:opacity-60"
-                        >
-                          {updatingServiceCatalog ? 'Saving...' : 'Save'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelEditingServiceCatalog}
-                          className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-600"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-black text-[#182C61]">{item.serviceName || 'Unnamed service'}</p>
-                        <p className="text-xs font-bold text-[#808e9b] mt-1">LKR {formatCurrency(item.price)} | {item.notes || 'No notes'}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => startEditingServiceCatalog(item)}
-                        className="px-3 py-1.5 rounded-lg border border-[#182C61] text-[#182C61] text-xs font-black hover:bg-[#182C61]/5"
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            <p className="text-xs font-bold text-[#808e9b]">{serviceCatalog.length} services available. Click "View Services" to manage them.</p>
           )}
         </div>
       </div>
@@ -851,6 +800,99 @@ export default function DoctorCarePlans() {
         </div>
       ) : null}
 
+      {isServiceModalOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/40 p-4 sm:p-8 overflow-y-auto">
+          <div className="max-w-4xl mx-auto bg-white rounded-2xl border-2 border-slate-100 shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-[#182C61]">Pre-Visit Services Catalog</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  cancelEditingServiceCatalog();
+                  setIsServiceModalOpen(false);
+                }}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            {serviceCatalogLoading ? (
+              <p className="text-sm font-bold text-[#808e9b]">Loading services...</p>
+            ) : serviceCatalog.length === 0 ? (
+              <p className="text-sm font-bold text-[#808e9b]">No services found.</p>
+            ) : (
+              <div className="space-y-3">
+                {serviceCatalog.map((item) => (
+                  <div key={item.id || item.serviceName} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    {editingServiceId === item.id ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          <input
+                            className="px-3 py-2 rounded-lg border border-slate-200"
+                            placeholder="Service name"
+                            value={editServiceCatalogForm.serviceName}
+                            onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, serviceName: e.target.value }))}
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="px-3 py-2 rounded-lg border border-slate-200"
+                            placeholder="Price (LKR)"
+                            value={editServiceCatalogForm.price}
+                            onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, price: e.target.value }))}
+                          />
+                          <input
+                            className="px-3 py-2 rounded-lg border border-slate-200"
+                            placeholder="Notes"
+                            value={editServiceCatalogForm.notes}
+                            onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, notes: e.target.value }))}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={updatingServiceCatalog}
+                            onClick={() => handleUpdateServiceCatalog(item.id)}
+                            className="px-3 py-1.5 rounded-lg bg-[#eb2f06] text-white text-xs font-black disabled:opacity-60"
+                          >
+                            {updatingServiceCatalog ? 'Saving...' : 'Save Update'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditingServiceCatalog}
+                            className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-black text-[#182C61]">{item.serviceName || 'Unnamed service'}</p>
+                          <p className="text-xs font-bold text-[#808e9b] mt-1">
+                            LKR {formatCurrency(item.price)} | {item.notes || 'No notes'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startEditingServiceCatalog(item)}
+                          className="px-3 py-1.5 rounded-lg border border-[#182C61] text-[#182C61] text-xs font-black hover:bg-[#182C61]/5"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       </>
       ) : null}
 
@@ -947,10 +989,27 @@ export default function DoctorCarePlans() {
                 />
                 <input
                   className="px-3 py-2 rounded-lg border border-slate-200"
-                  placeholder="Frequency"
+                  list={`frequency-options-${index}`}
+                  placeholder="Frequency (select or type custom)"
                   value={medicine.frequency}
                   onChange={(e) => updateMedicine(index, 'frequency', e.target.value)}
                 />
+                <datalist id={`frequency-options-${index}`}>
+                  <option value="Once daily" />
+                  <option value="Twice daily (BD)" />
+                  <option value="Three times daily (TDS)" />
+                  <option value="Four times daily (QID)" />
+                  <option value="Every 6 hours" />
+                  <option value="Every 8 hours" />
+                  <option value="Every 12 hours" />
+                  <option value="Before meals" />
+                  <option value="After meals" />
+                  <option value="With meals" />
+                  <option value="At bedtime" />
+                  <option value="As needed" />
+                  <option value="Once weekly" />
+                  <option value="Twice weekly" />
+                </datalist>
                 <input
                   type="number"
                   min="1"
