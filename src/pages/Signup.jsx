@@ -22,7 +22,8 @@ export default function Signup({ onSignup }) {
         email,
         password,
         role: normalizedRole,
-        roles: [normalizedRole],
+        // Backend expects a string for `roles` (e.g. "PATIENT"), not an array
+        roles: normalizedRole,
       });
 
       const token = result?.token;

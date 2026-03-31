@@ -25,12 +25,14 @@ export default function Login({ onLogin }) {
     setError('');
     setIsSubmitting(true);
     try {
+      const trimmed = (username || '').trim();
+      const payload = trimmed.includes('@')
+        ? { email: trimmed, password }
+        : { username: trimmed, password };
+
       const result = await httpJson(`${api.authBase}/login`, {
         method: 'POST',
-        body: {
-          username,
-          password,
-        },
+        body: payload,
       });
 
       const token = result?.token;
