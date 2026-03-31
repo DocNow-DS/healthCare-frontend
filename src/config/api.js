@@ -194,6 +194,18 @@ export const API = {
     }),
   },
 
+  preVisitServices: {
+    getAll: () => apiClient(`${services.doctor}/api/pre-visit-services`),
+    create: (payload) => apiClient(`${services.doctor}/api/pre-visit-services`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+    update: (id, payload) => apiClient(`${services.doctor}/api/pre-visit-services/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  },
+
   // Admin Endpoints
   admin: {
     getAllUsers: () => apiClient(`${services.patient}/api/admin/users`),

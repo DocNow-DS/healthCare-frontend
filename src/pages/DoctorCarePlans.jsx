@@ -23,6 +23,7 @@ const emptyMedicine = () => ({
 
 const emptyService = () => ({
   serviceName: '',
+  price: '',
   notes: '',
 });
 
@@ -52,10 +53,16 @@ export default function DoctorCarePlans() {
   const [medicineCatalog, setMedicineCatalog] = useState([]);
   const [medicineCatalogLoading, setMedicineCatalogLoading] = useState(false);
   const [medicineCatalogError, setMedicineCatalogError] = useState('');
+  const [serviceCatalog, setServiceCatalog] = useState([]);
+  const [serviceCatalogLoading, setServiceCatalogLoading] = useState(false);
+  const [serviceCatalogError, setServiceCatalogError] = useState('');
   const [addingMedicine, setAddingMedicine] = useState(false);
+  const [addingServiceCatalog, setAddingServiceCatalog] = useState(false);
   const [isMedicineModalOpen, setIsMedicineModalOpen] = useState(false);
   const [editingMedicineId, setEditingMedicineId] = useState('');
   const [updatingMedicine, setUpdatingMedicine] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState('');
+  const [updatingServiceCatalog, setUpdatingServiceCatalog] = useState(false);
   const [editMedicineForm, setEditMedicineForm] = useState({
     name: '',
     price: '',
@@ -68,6 +75,16 @@ export default function DoctorCarePlans() {
     price: '',
     form: '',
     strength: '',
+    notes: '',
+  });
+  const [newServiceCatalogItem, setNewServiceCatalogItem] = useState({
+    serviceName: '',
+    price: '',
+    notes: '',
+  });
+  const [editServiceCatalogForm, setEditServiceCatalogForm] = useState({
+    serviceName: '',
+    price: '',
     notes: '',
   });
 
@@ -125,6 +142,20 @@ export default function DoctorCarePlans() {
     }
   };
 
+  const loadServiceCatalog = async () => {
+    setServiceCatalogLoading(true);
+    setServiceCatalogError('');
+    try {
+      const list = await API.preVisitServices.getAll();
+      setServiceCatalog(Array.isArray(list) ? list : []);
+    } catch (e) {
+      setServiceCatalog([]);
+      setServiceCatalogError(e?.payload?.message || e?.message || 'Unable to load pre-visit service catalog');
+    } finally {
+      setServiceCatalogLoading(false);
+    }
+  };
+
   const loadConsultationSessions = async () => {
     if (!doctorId) return;
     setConsultationLoading(true);
@@ -156,6 +187,7 @@ export default function DoctorCarePlans() {
 
   useEffect(() => {
     loadMedicineCatalog();
+    loadServiceCatalog();
   }, []);
 
   const medicineCatalogByName = useMemo(() => {
@@ -170,6 +202,21 @@ export default function DoctorCarePlans() {
   const totalMedicineCost = useMemo(() => {
     return medicines.reduce((sum, medicine) => sum + parsePrice(medicine.price), 0);
   }, [medicines]);
+
+  const serviceCatalogByName = useMemo(() => {
+    const map = new Map();
+    serviceCatalog.forEach((item) => {
+      const key = String(item?.serviceName || '').trim().toLowerCase();
+      if (key) map.set(key, item);
+    });
+    return map;
+  }, [serviceCatalog]);
+
+  const totalServiceCost = useMemo(() => {
+    return preVisitServices.reduce((sum, service) => sum + parsePrice(service.price), 0);
+  }, [preVisitServices]);
+
+  const grandTotalCost = useMemo(() => totalMedicineCost + totalServiceCost, [totalMedicineCost, totalServiceCost]);
 
   const updateMedicine = (index, key, value) => {
     setMedicines((prev) => prev.map((m, i) => (i === index ? { ...m, [key]: value } : m)));
@@ -192,6 +239,21 @@ export default function DoctorCarePlans() {
 
   const updateService = (index, key, value) => {
     setPreVisitServices((prev) => prev.map((s, i) => (i === index ? { ...s, [key]: value } : s)));
+  };
+
+  const updateServiceName = (index, serviceName) => {
+    const matched = serviceCatalogByName.get(String(serviceName || '').trim().toLowerCase());
+    setPreVisitServices((prev) =>
+      prev.map((s, i) =>
+        i === index
+          ? {
+              ...s,
+              serviceName,
+              price: matched?.price != null ? String(matched.price) : s.price,
+            }
+          : s,
+      ),
+    );
   };
 
   const addMedicine = () => setMedicines((prev) => [...prev, emptyMedicine()]);
@@ -283,6 +345,75 @@ export default function DoctorCarePlans() {
     }
   };
 
+  const handleAddServiceToCatalog = async (e) => {
+    e.preventDefault();
+    if (!newServiceCatalogItem.serviceName.trim()) {
+      setServiceCatalogError('Service name is required');
+      return;
+    }
+    if (!newServiceCatalogItem.price || parsePrice(newServiceCatalogItem.price) <= 0) {
+      setServiceCatalogError('Service price is required and must be greater than 0');
+      return;
+    }
+
+    setAddingServiceCatalog(true);
+    setServiceCatalogError('');
+    try {
+      await API.preVisitServices.create({
+        serviceName: newServiceCatalogItem.serviceName.trim(),
+        price: parsePrice(newServiceCatalogItem.price),
+        notes: newServiceCatalogItem.notes.trim(),
+        active: true,
+      });
+      setNewServiceCatalogItem({ serviceName: '', price: '', notes: '' });
+      await loadServiceCatalog();
+      setSuccess('Pre-visit service added to catalog.');
+    } catch (e2) {
+      setServiceCatalogError(e2?.payload?.message || e2?.message || 'Failed to add pre-visit service');
+    } finally {
+      setAddingServiceCatalog(false);
+    }
+  };
+
+  const startEditingServiceCatalog = (service) => {
+    setEditingServiceId(service.id || '');
+    setEditServiceCatalogForm({
+      serviceName: service.serviceName || '',
+      price: service.price != null ? String(service.price) : '',
+      notes: service.notes || '',
+    });
+  };
+
+  const cancelEditingServiceCatalog = () => {
+    setEditingServiceId('');
+    setEditServiceCatalogForm({ serviceName: '', price: '', notes: '' });
+  };
+
+  const handleUpdateServiceCatalog = async (serviceId) => {
+    if (!serviceId) return;
+    if (!editServiceCatalogForm.serviceName.trim()) {
+      setServiceCatalogError('Service name is required');
+      return;
+    }
+
+    setUpdatingServiceCatalog(true);
+    setServiceCatalogError('');
+    try {
+      await API.preVisitServices.update(serviceId, {
+        serviceName: editServiceCatalogForm.serviceName.trim(),
+        price: parsePrice(editServiceCatalogForm.price),
+        notes: editServiceCatalogForm.notes.trim(),
+      });
+      await loadServiceCatalog();
+      setSuccess('Pre-visit service updated successfully.');
+      cancelEditingServiceCatalog();
+    } catch (err) {
+      setServiceCatalogError(err?.payload?.message || err?.message || 'Failed to update pre-visit service');
+    } finally {
+      setUpdatingServiceCatalog(false);
+    }
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!doctorId) {
@@ -319,6 +450,7 @@ export default function DoctorCarePlans() {
         .filter((s) => s.serviceName.trim())
         .map((s) => ({
           serviceName: s.serviceName.trim(),
+          price: parsePrice(s.price),
           notes: s.notes.trim(),
         })),
     };
@@ -492,6 +624,127 @@ export default function DoctorCarePlans() {
         </div>
       </div>
 
+      <div className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-lg font-black text-[#182C61]">Pre-Visit Service Catalog</h2>
+          <button
+            type="button"
+            onClick={loadServiceCatalog}
+            className="px-3 py-1.5 rounded-lg bg-[#182C61] text-white text-xs font-black hover:bg-[#182C61]/85"
+          >
+            Refresh Services
+          </button>
+        </div>
+
+        {serviceCatalogError ? (
+          <p className="text-xs font-bold text-amber-700">{serviceCatalogError}</p>
+        ) : null}
+
+        <form onSubmit={handleAddServiceToCatalog} className="grid grid-cols-1 md:grid-cols-4 gap-2">
+          <input
+            className="px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Service name"
+            value={newServiceCatalogItem.serviceName}
+            onChange={(e) => setNewServiceCatalogItem((prev) => ({ ...prev, serviceName: e.target.value }))}
+            required
+          />
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            className="px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Price (LKR)"
+            value={newServiceCatalogItem.price}
+            onChange={(e) => setNewServiceCatalogItem((prev) => ({ ...prev, price: e.target.value }))}
+            required
+          />
+          <input
+            className="px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Notes (optional)"
+            value={newServiceCatalogItem.notes}
+            onChange={(e) => setNewServiceCatalogItem((prev) => ({ ...prev, notes: e.target.value }))}
+          />
+          <button
+            type="submit"
+            disabled={addingServiceCatalog}
+            className="px-3 py-2 rounded-lg bg-[#eb2f06] text-white text-xs font-black disabled:opacity-60"
+          >
+            {addingServiceCatalog ? 'Adding...' : 'Add Service'}
+          </button>
+        </form>
+
+        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+          {serviceCatalogLoading ? (
+            <p className="text-xs font-bold text-[#808e9b]">Loading pre-visit services...</p>
+          ) : serviceCatalog.length === 0 ? (
+            <p className="text-xs font-bold text-[#808e9b]">No pre-visit services in catalog yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {serviceCatalog.map((item) => (
+                <div key={item.id || item.serviceName} className="p-3 rounded-lg bg-white border border-slate-100">
+                  {editingServiceId === item.id ? (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                      <input
+                        className="px-3 py-2 rounded-lg border border-slate-200"
+                        placeholder="Service name"
+                        value={editServiceCatalogForm.serviceName}
+                        onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, serviceName: e.target.value }))}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="px-3 py-2 rounded-lg border border-slate-200"
+                        placeholder="Price (LKR)"
+                        value={editServiceCatalogForm.price}
+                        onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, price: e.target.value }))}
+                      />
+                      <input
+                        className="px-3 py-2 rounded-lg border border-slate-200"
+                        placeholder="Notes"
+                        value={editServiceCatalogForm.notes}
+                        onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, notes: e.target.value }))}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={updatingServiceCatalog}
+                          onClick={() => handleUpdateServiceCatalog(item.id)}
+                          className="px-3 py-1.5 rounded-lg bg-[#eb2f06] text-white text-xs font-black disabled:opacity-60"
+                        >
+                          {updatingServiceCatalog ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditingServiceCatalog}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-600"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-[#182C61]">{item.serviceName || 'Unnamed service'}</p>
+                        <p className="text-xs font-bold text-[#808e9b] mt-1">LKR {formatCurrency(item.price)} | {item.notes || 'No notes'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => startEditingServiceCatalog(item)}
+                        className="px-3 py-1.5 rounded-lg border border-[#182C61] text-[#182C61] text-xs font-black hover:bg-[#182C61]/5"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {isMedicineModalOpen ? (
         <div className="fixed inset-0 z-50 bg-black/40 p-4 sm:p-8 overflow-y-auto">
           <div className="max-w-4xl mx-auto bg-white rounded-2xl border-2 border-slate-100 shadow-2xl p-5 space-y-4">
@@ -607,6 +860,11 @@ export default function DoctorCarePlans() {
         <datalist id="medicine-catalog-options">
           {medicineCatalog.map((item) => (
             <option key={item.id || item.name} value={item.name} />
+          ))}
+        </datalist>
+        <datalist id="service-catalog-options">
+          {serviceCatalog.map((item) => (
+            <option key={item.id || item.serviceName} value={item.serviceName} />
           ))}
         </datalist>
         <form onSubmit={handleCreate} className="space-y-5">
@@ -749,12 +1007,23 @@ export default function DoctorCarePlans() {
             </div>
 
             {preVisitServices.map((service, index) => (
-              <div key={`service-${index}`} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div key={`service-${index}`} className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <input
                   className="px-3 py-2 rounded-lg border border-slate-200"
-                  placeholder="Service name"
+                  list="service-catalog-options"
+                  placeholder="Service name (choose from catalog or type)"
                   value={service.serviceName}
-                  onChange={(e) => updateService(index, 'serviceName', e.target.value)}
+                  onChange={(e) => updateServiceName(index, e.target.value)}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+                  placeholder="Auto price (LKR)"
+                  value={service.price}
+                  readOnly
                 />
                 <div className="flex gap-2">
                   <input
@@ -772,8 +1041,27 @@ export default function DoctorCarePlans() {
                     <TrashIcon className="h-4 w-4" />
                   </button>
                 </div>
+                </div>
+                <p className="text-xs font-black text-[#182C61]">
+                  Line Service Cost: LKR {formatCurrency(parsePrice(service.price))}
+                </p>
+                {!service.price ? (
+                  <p className="text-[11px] font-bold text-amber-700">
+                    Price not found in service catalog for this service name. Select a catalog service to auto-fill.
+                  </p>
+                ) : null}
               </div>
             ))}
+
+            <div className="rounded-xl border border-[#182C61]/20 bg-[#182C61]/5 p-3 flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-[#182C61]">Total Service Cost</span>
+              <span className="text-base font-black text-[#182C61]">LKR {formatCurrency(totalServiceCost)}</span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[#eb2f06]/20 bg-[#eb2f06]/5 p-3 flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider text-[#eb2f06]">Estimated Grand Total</span>
+            <span className="text-lg font-black text-[#eb2f06]">LKR {formatCurrency(grandTotalCost)}</span>
           </div>
 
           <div>
