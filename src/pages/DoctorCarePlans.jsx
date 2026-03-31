@@ -983,10 +983,27 @@ export default function DoctorCarePlans() {
                 />
                 <input
                   className="px-3 py-2 rounded-lg border border-slate-200"
-                  placeholder="Dosage"
+                  list={`dosage-options-${index}`}
+                  placeholder="Dosage (select or type custom)"
                   value={medicine.dosage}
                   onChange={(e) => updateMedicine(index, 'dosage', e.target.value)}
                 />
+                <datalist id={`dosage-options-${index}`}>
+                  <option value="250mg" />
+                  <option value="500mg" />
+                  <option value="750mg" />
+                  <option value="1000mg (1g)" />
+                  <option value="250mg/5ml" />
+                  <option value="500mg/5ml" />
+                  <option value="100mg/ml" />
+                  <option value="2mg" />
+                  <option value="5mg" />
+                  <option value="10mg" />
+                  <option value="20mg" />
+                  <option value="25mg" />
+                  <option value="50mg" />
+                  <option value="100mg" />
+                </datalist>
                 <input
                   className="px-3 py-2 rounded-lg border border-slate-200"
                   list={`frequency-options-${index}`}
