@@ -23,7 +23,7 @@ const navConfigs = {
     { name: 'Specialists', href: '/dashboard/doctors', icon: UserGroupIcon },
     { name: 'AI Checker', href: '/dashboard/ai-checker', icon: BeakerIcon },
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
-    { name: 'Payments', href: '/dashboard/payments', icon: CreditCardIcon },
+    { name: 'Bill Requests', href: '/dashboard/payments', icon: CreditCardIcon },
     { name: 'Notifications', href: '/dashboard/notifications', icon: BellIcon },
     { name: 'Profile', href: '/dashboard/profile', icon: UserCircleIcon },
   ],
@@ -33,6 +33,7 @@ const navConfigs = {
     { name: 'Patients', href: '/dashboard/patients', icon: UserGroupIcon },
     { name: 'Care Plans', href: '/dashboard/care-plans', icon: ClipboardDocumentListIcon },
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
+    { name: 'Bill Requests', href: '/dashboard/bill-requests', icon: CreditCardIcon },
     { name: 'Profile', href: '/dashboard/profile', icon: UserCircleIcon },
   ],
   Admin: [
