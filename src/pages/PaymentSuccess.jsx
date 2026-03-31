@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import API from '../config/api.js';
+import { createBillingReportEntry } from '../utils/billingReports';
 
 export default function PaymentSuccess() {
   const location = useLocation();
@@ -10,6 +11,19 @@ export default function PaymentSuccess() {
   // Get session_id from URL query params
   const queryParams = new URLSearchParams(location.search);
   const sessionId = queryParams.get('session_id');
+  const consultationId = queryParams.get('consultationId');
+
+  useEffect(() => {
+    if (paymentDetails?.status === 'COMPLETED') {
+      createBillingReportEntry({
+        consultationId: paymentDetails?.consultationId || consultationId,
+        paymentId: paymentDetails?.id,
+        amountCents: paymentDetails?.amountCents,
+        currency: paymentDetails?.currency,
+        paidAt: new Date().toISOString(),
+      });
+    }
+  }, [consultationId, paymentDetails]);
 
   useEffect(() => {
     if (sessionId) {
@@ -50,7 +64,7 @@ export default function PaymentSuccess() {
       <div className="max-w-2xl mx-auto">
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
           {/* Success Header */}
-          <div className="bg-gradient-to-r from-green-500 to-teal-500 px-6 py-8 text-center">
+          <div className="bg-linear-to-r from-green-500 to-teal-500 px-6 py-8 text-center">
             <div className="mx-auto w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4">
               <svg
                 className="w-10 h-10 text-green-500"
@@ -105,7 +119,7 @@ export default function PaymentSuccess() {
               <h3 className="text-lg font-semibold text-gray-900 mb-3">What Happens Next?</h3>
               <div className="space-y-3">
                 <div className="flex items-start space-x-3">
-                  <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <div className="shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                     <span className="text-blue-600 font-semibold text-sm">1</span>
                   </div>
                   <div>
@@ -116,7 +130,7 @@ export default function PaymentSuccess() {
                   </div>
                 </div>
                 <div className="flex items-start space-x-3">
-                  <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <div className="shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                     <span className="text-blue-600 font-semibold text-sm">2</span>
                   </div>
                   <div>
@@ -127,7 +141,7 @@ export default function PaymentSuccess() {
                   </div>
                 </div>
                 <div className="flex items-start space-x-3">
-                  <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <div className="shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                     <span className="text-blue-600 font-semibold text-sm">3</span>
                   </div>
                   <div>
@@ -164,19 +178,19 @@ export default function PaymentSuccess() {
             {/* Action Buttons */}
             <div className="space-y-3">
               <Link
-                to="/profile"
+                to="/dashboard/appointments"
                 className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 View My Appointments
               </Link>
               <Link
-                to="/payments"
+                to="/dashboard/payments"
                 className="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 View Payment History
               </Link>
               <Link
-                to="/"
+                to="/dashboard"
                 className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-blue-600 bg-transparent hover:bg-blue-50 focus:outline-none"
               >
                 Return to Home

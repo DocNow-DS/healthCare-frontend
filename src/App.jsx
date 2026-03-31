@@ -26,6 +26,7 @@ import PaymentHistory from './pages/PaymentHistory.jsx'
 import PaymentCheckout from './pages/PaymentCheckout.jsx'
 import PaymentSuccess from './pages/PaymentSuccess.jsx'
 import PaymentCancel from './pages/PaymentCancel.jsx'
+import BillingRequests from './pages/BillingRequests.jsx'
 import './utils/debug-auth.js' // Load debug utilities
 import './utils/test-auth.js' // Load test auth utilities
 import './utils/test-admin-routing.js' // Load admin routing test
@@ -76,9 +77,9 @@ function App() {
                     <Route index element={<AdminDashboard />} />
                     <Route path="doctors-management" element={<AdminDoctors />} />
                     <Route path="patients-management" element={<AdminPatients />} />
-                    <Route path="management" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Admin Management</h1><p className="text-[#808e9b] mt-4 font-bold">User and Platform operations.</p></div>} />
+                    <Route path="management" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-primary-500">Admin Management</h1><p className="text-[#808e9b] mt-4 font-bold">User and Platform operations.</p></div>} />
                     <Route path="transactions" element={<Payments />} />
-                    <Route path="settings" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-[#182C61]">Settings</h1><p className="text-[#808e9b] mt-4 font-bold">Admin settings and configuration.</p></div>} />
+                    <Route path="settings" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-primary-500">Settings</h1><p className="text-[#808e9b] mt-4 font-bold">Admin settings and configuration.</p></div>} />
                     <Route path="payments" element={<PaymentHistory />} />
                     <Route path="payment/checkout" element={<PaymentCheckout />} />
                     <Route path="payment/success" element={<PaymentSuccess />} />
@@ -91,6 +92,7 @@ function App() {
                     <Route path="patients" element={<DoctorPatients />} />
                     <Route path="care-plans" element={<DoctorCarePlans />} />
                     <Route path="consultations" element={<VideoConsultation />} />
+                    <Route path="bill-requests" element={<BillingRequests />} />
                     <Route path="profile" element={<DoctorProfile />} />
                   </>
                 ) : (
@@ -99,7 +101,7 @@ function App() {
                     <Route path="doctors" element={<DoctorSearch />} />
                     <Route path="consultations" element={<VideoConsultation />} />
                     <Route path="ai-checker" element={<AISymptomChecker />} />
-                    <Route path="payments" element={<Payments />} />
+                    <Route path="payments" element={<BillingRequests />} />
                     <Route path="appointments" element={<PatientAppointments />} />
                     <Route path="reports" element={<PatientReports />} />
                     <Route path="notifications" element={<PatientNotifications />} />
