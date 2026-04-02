@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { API } from '../config/api';
 import { UserCircleIcon, ExclamationTriangleIcon, CheckCircleIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import UploadMedicalDocument from '../components/UploadMedicalDocument';
 
 const readAuthUser = () => {
   try {
@@ -18,6 +19,9 @@ export default function PatientProfile() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [reportTab, setReportTab] = useState('submit');
+  const [reports, setReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -60,8 +64,21 @@ export default function PatientProfile() {
     }
   };
 
+  const loadReports = async () => {
+    setReportsLoading(true);
+    try {
+      const data = await API.patients.getReports();
+      setReports(Array.isArray(data) ? data : []);
+    } catch {
+      setReports([]);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadProfile();
+    loadReports();
   }, []);
 
   const handleChange = (e) => {
@@ -104,6 +121,15 @@ export default function PatientProfile() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleReportUpload = async (file, description) => {
+    setError('');
+    setSuccess('');
+    await API.patients.uploadReport(file, description);
+    setSuccess('Medical report submitted successfully.');
+    setReportTab('view');
+    await loadReports();
   };
 
   if (loading) {
@@ -313,6 +339,70 @@ export default function PatientProfile() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="bg-white border-2 border-slate-50 rounded-2xl p-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-black text-[#182C61]">Report Submission</h2>
+          <p className="text-[#808e9b] mt-1 text-sm font-bold">Upload your latest medical documents from the Profile tab.</p>
+        </div>
+
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setReportTab('submit')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-black border ${
+              reportTab === 'submit'
+                ? 'bg-[#182C61] text-white border-[#182C61]'
+                : 'bg-white text-[#182C61] border-[#182C61]/30 hover:bg-[#182C61]/5'
+            }`}
+          >
+            Submit Report
+          </button>
+          <button
+            type="button"
+            onClick={() => setReportTab('view')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-black border ${
+              reportTab === 'view'
+                ? 'bg-[#182C61] text-white border-[#182C61]'
+                : 'bg-white text-[#182C61] border-[#182C61]/30 hover:bg-[#182C61]/5'
+            }`}
+          >
+            View Reports
+          </button>
+        </div>
+
+        {reportTab === 'submit' ? (
+          <UploadMedicalDocument onUpload={handleReportUpload} />
+        ) : reportsLoading ? (
+          <p className="text-sm font-bold text-[#808e9b]">Loading reports...</p>
+        ) : reports.length === 0 ? (
+          <p className="text-sm font-bold text-[#808e9b]">No uploaded reports yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {reports.map((item, index) => (
+              <div key={item.id || index} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                <p className="text-sm font-black text-[#182C61]">{item.fileName || 'Medical Report'}</p>
+                <p className="text-xs font-bold text-[#808e9b] mt-1">{item.description || 'No description provided'}</p>
+                {item.uploadDate ? (
+                  <p className="text-xs font-bold text-[#808e9b] mt-1">
+                    Uploaded: {new Date(item.uploadDate).toLocaleString()}
+                  </p>
+                ) : null}
+                {item.filePath && item.filePath.startsWith('http') ? (
+                  <a
+                    href={item.filePath}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block mt-2 text-xs font-black text-[#182C61] hover:underline"
+                  >
+                    Open document
+                  </a>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

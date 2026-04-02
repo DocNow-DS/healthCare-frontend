@@ -71,10 +71,14 @@ export const clearInvalidTokens = () => {
 // Generic API client with authentication
 const apiClient = async (url, options = {}) => {
   const token = getAuthToken();
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = {
-    'Content-Type': 'application/json',
     ...options.headers,
   };
+
+  if (!isFormData && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   // Only add Authorization header if token exists and is valid
   if (token) {
@@ -109,7 +113,16 @@ const apiClient = async (url, options = {}) => {
       throw err;
     }
     
-    return await response.json();
+    if (response.status === 204) {
+      return null;
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      return await response.json();
+    }
+
+    return await response.text();
   } catch (error) {
     console.error('API Error:', error);
     throw error;
@@ -143,6 +156,15 @@ export const API = {
       body: JSON.stringify(data),
     }),
     getReports: () => apiClient(`${services.patient}/api/patient/reports`),
+    uploadReport: (file, description = '') => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('description', description);
+      return apiClient(`${services.patient}/api/patient/reports`, {
+        method: 'POST',
+        body: formData,
+      });
+    },
     getPrescriptions: () => apiClient(`${services.patient}/api/patient/prescriptions`),
   },
 
