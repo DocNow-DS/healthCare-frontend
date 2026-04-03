@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API } from '../config/api';
-import { CalendarDaysIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  CalendarDaysIcon,
+  ExclamationTriangleIcon,
+  XCircleIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
 
 const formatWhen = (iso) => {
   if (!iso) return '—';
@@ -79,6 +84,18 @@ export default function PatientAppointments() {
   const [appointments, setAppointments] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [userPickedId, setUserPickedId] = useState(null);
+  const userPickedIdRef = useRef(userPickedId);
+  const expandedIdRef = useRef(expandedId);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  useEffect(() => {
+    userPickedIdRef.current = userPickedId;
+  }, [userPickedId]);
+
+  useEffect(() => {
+    expandedIdRef.current = expandedId;
+  }, [expandedId]);
 
   const loadAppointments = useCallback(async () => {
     setLoading(true);
@@ -95,7 +112,7 @@ export default function PatientAppointments() {
 
       // If the user has not manually picked an appointment yet, auto-select the
       // nearest upcoming one (or latest if there is no future appointment).
-      if (!userPickedId && normalized.length > 0) {
+      if (!userPickedIdRef.current && normalized.length > 0) {
         const now = Date.now();
         const withTimes = normalized
           .map((a) => ({
@@ -118,7 +135,7 @@ export default function PatientAppointments() {
           candidate = normalized[0];
         }
 
-        if (candidate && candidate.id !== expandedId) {
+        if (candidate && candidate.id !== expandedIdRef.current) {
           setExpandedId(candidate.id);
         }
       }
@@ -138,6 +155,55 @@ export default function PatientAppointments() {
     () => appointments.find((a) => a.id === expandedId) || null,
     [appointments, expandedId],
   );
+
+  const isCancelableStatus = (status) => {
+    const s = String(status || '').toUpperCase();
+    return !['COMPLETED', 'CANCELLED', 'DECLINED'].includes(s);
+  };
+
+  const handleCancelAppointment = async (appointment) => {
+    const appointmentId = appointment?.id;
+    if (!appointmentId) return;
+    if (!isCancelableStatus(appointment?.status)) return;
+
+    const ok = window.confirm('Cancel this appointment?');
+    if (!ok) return;
+
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await API.patientAppointments.cancel(appointmentId);
+      await loadAppointments();
+    } catch (e) {
+      setActionError(e?.message || 'Unable to cancel appointment.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteAppointment = async (appointment) => {
+    const appointmentId = appointment?.id;
+    if (!appointmentId) return;
+
+    const ok = window.confirm('Delete this appointment permanently?');
+    if (!ok) return;
+
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await API.patientAppointments.delete(appointmentId);
+      // Clear selection so the "nearest appointment" auto-pick can re-run.
+      setUserPickedId(null);
+      setExpandedId(null);
+      userPickedIdRef.current = null;
+      expandedIdRef.current = null;
+      await loadAppointments();
+    } catch (e) {
+      setActionError(e?.message || 'Unable to delete appointment.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -251,6 +317,65 @@ export default function PatientAppointments() {
                   <CalendarDaysIcon className="h-4 w-4" />
                   {a.status || '—'}
                 </div>
+
+                {expandedId === a.id ? (
+                  <div className="w-full mt-3 bg-white border border-slate-100 rounded-xl p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#808e9b]">
+                          Appointment details
+                        </p>
+                        <p className="text-sm font-black text-[#182C61]">
+                          {a.consultationType || 'Consultation'} · {formatWhen(a.startTime)}
+                        </p>
+                        <p className="text-xs font-bold text-[#808e9b]">
+                          Start: {formatWhen(a.startTime)} {a.endTime ? `· End: ${formatWhen(a.endTime)}` : ''}
+                        </p>
+                        {a.notes ? (
+                          <p className="text-xs text-[#808e9b] line-clamp-none">{a.notes}</p>
+                        ) : (
+                          <p className="text-xs text-[#808e9b]">No notes.</p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCancelAppointment(a);
+                          }}
+                          disabled={actionLoading || !isCancelableStatus(a.status)}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border-2 border-emerald-500/20 hover:bg-emerald-500/10 disabled:opacity-50 disabled:hover:bg-white transition-all"
+                          title="Cancel appointment"
+                        >
+                          <XCircleIcon className="h-4 w-4 text-emerald-600" />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Cancel</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteAppointment(a);
+                          }}
+                          disabled={actionLoading}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border-2 border-[#eb2f06]/20 hover:bg-[#eb2f06]/10 disabled:opacity-50 disabled:hover:bg-white transition-all"
+                          title="Delete appointment"
+                        >
+                          <TrashIcon className="h-4 w-4 text-[#eb2f06]" />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-[#eb2f06]">Delete</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {actionError ? (
+                      <div className="mt-3 bg-red-500/10 border border-red-500/30 text-red-100 rounded-xl p-3 text-sm font-semibold">
+                        {actionError}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

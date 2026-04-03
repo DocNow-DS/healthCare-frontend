@@ -321,6 +321,16 @@ export const API = {
       apiClient(`${services.appointment}/api/patient/appointments`, {
         method: 'GET',
       }),
+    cancel: (appointmentId) =>
+      apiClient(
+        `${services.appointment}/api/patient/appointments/${encodeURIComponent(String(appointmentId))}/cancel`,
+        { method: 'PATCH' },
+      ),
+    delete: (appointmentId) =>
+      apiClient(
+        `${services.appointment}/api/patient/appointments/${encodeURIComponent(String(appointmentId))}`,
+        { method: 'DELETE' },
+      ),
     create: (data) =>
       apiClient(`${services.appointment}/api/patient/appointments`, {
         method: 'POST',
