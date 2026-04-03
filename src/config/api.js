@@ -21,7 +21,7 @@ export const services = {
   // Payment service
   payment: readEnv('VITE_PAYMENT_SERVICE_URL', 'http://localhost:8085'),
   // Notification service
-  notification: readEnv('VITE_NOTIFICATION_SERVICE_URL', 'http://localhost:8086'),
+  notification: readEnv('VITE_NOTIFICATION_SERVICE_URL', 'http://localhost:8084'),
 }
 
 // Debug: show configured service base URLs in dev
@@ -189,6 +189,7 @@ export const API = {
       body: JSON.stringify(payload),
     }),
     getByDoctor: (doctorId) => apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}`),
+    getByPatient: (patientId) => apiClient(`${services.doctor}/api/care-plans/patient/${patientId}`),
     getByDoctorAndPatient: (doctorId, patientId) =>
       apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}/patient/${patientId}`),
   },
@@ -197,6 +198,10 @@ export const API = {
     getAll: () => apiClient(`${services.doctor}/api/medicines`),
     create: (payload) => apiClient(`${services.doctor}/api/medicines`, {
       method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+    update: (id, payload) => apiClient(`${services.doctor}/api/medicines/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(payload),
     }),
   },
@@ -271,6 +276,28 @@ export const API = {
     }),
   },
 
+  // Notification Endpoints
+  notifications: {
+    // Get current user's notifications (extracts username from token)
+    getMyNotifications: (userType = 'PATIENT') => apiClient(`${services.notification}/api/notifications/me?userType=${userType}`),
+    // Get current user's unread notifications
+    getMyUnread: (userType = 'PATIENT') => apiClient(`${services.notification}/api/notifications/me/unread?userType=${userType}`),
+    // Get current user's unread count
+    getMyUnreadCount: (userType = 'PATIENT') => apiClient(`${services.notification}/api/notifications/me/unread/count?userType=${userType}`),
+    // Mark all notifications as read
+    markAllAsRead: (userType = 'PATIENT') => apiClient(`${services.notification}/api/notifications/me/read-all?userType=${userType}`, {
+      method: 'PUT',
+    }),
+    // Mark a single notification as read
+    markAsRead: (notificationId) => apiClient(`${services.notification}/api/notifications/${notificationId}/read`, {
+      method: 'PUT',
+    }),
+    // Delete a notification
+    delete: (notificationId) => apiClient(`${services.notification}/api/notifications/${notificationId}`, {
+      method: 'DELETE',
+    }),
+  },
+
   // Payment Endpoints
   payment: {
     // Create Stripe checkout session
@@ -282,6 +309,8 @@ export const API = {
     getPayment: (paymentId) => apiClient(`${services.payment}/api/v1/payments/${paymentId}`),
     // Get payment by consultation ID
     getPaymentByConsultation: (consultationId) => apiClient(`${services.payment}/api/v1/payments/consultation/${consultationId}`),
+    // Get payment by Stripe checkout session ID
+    getPaymentBySession: (sessionId) => apiClient(`${services.payment}/api/v1/payments/session/${sessionId}`),
     // Get all payments for current patient
     getMyPayments: () => apiClient(`${services.payment}/api/v1/payments/patient/my-payments`),
   },

@@ -14,6 +14,7 @@ const readAuthUser = () => {
 
 const emptyMedicine = () => ({
   medicineName: '',
+  price: '',
   dosage: '',
   frequency: '',
   durationDays: '',
@@ -25,10 +26,23 @@ const emptyService = () => ({
   notes: '',
 });
 
+const parsePrice = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return parsed;
+};
+
+const formatCurrency = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '0.00';
+  return amount.toFixed(2);
+};
+
 export default function DoctorCarePlans() {
   const [searchParams] = useSearchParams();
   const authUser = useMemo(() => readAuthUser(), []);
   const doctorId = useMemo(() => authUser?.id || authUser?.userId || authUser?.username || '', [authUser]);
+  const [activeTab, setActiveTab] = useState('create');
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -39,9 +53,19 @@ export default function DoctorCarePlans() {
   const [medicineCatalogLoading, setMedicineCatalogLoading] = useState(false);
   const [medicineCatalogError, setMedicineCatalogError] = useState('');
   const [addingMedicine, setAddingMedicine] = useState(false);
+  const [isMedicineModalOpen, setIsMedicineModalOpen] = useState(false);
+  const [editingMedicineId, setEditingMedicineId] = useState('');
+  const [updatingMedicine, setUpdatingMedicine] = useState(false);
+  const [editMedicineForm, setEditMedicineForm] = useState({
+    name: '',
+    price: '',
+    form: '',
+    strength: '',
+    notes: '',
+  });
   const [newMedicine, setNewMedicine] = useState({
     name: '',
-    genericName: '',
+    price: '',
     form: '',
     strength: '',
     notes: '',
@@ -56,6 +80,9 @@ export default function DoctorCarePlans() {
   const [preVisitServices, setPreVisitServices] = useState([emptyService()]);
 
   const [historyPatientId, setHistoryPatientId] = useState(searchParams.get('patientId') || '');
+  const [consultationSessions, setConsultationSessions] = useState([]);
+  const [consultationLoading, setConsultationLoading] = useState(false);
+  const [consultationError, setConsultationError] = useState('');
 
   const sortPlans = (list) => {
     const copy = Array.isArray(list) ? [...list] : [];
@@ -98,8 +125,32 @@ export default function DoctorCarePlans() {
     }
   };
 
+  const loadConsultationSessions = async () => {
+    if (!doctorId) return;
+    setConsultationLoading(true);
+    setConsultationError('');
+    try {
+      const list = await API.telemedicine.listForDoctor(doctorId);
+      const sessions = Array.isArray(list) ? list : [];
+      const filtered = historyPatientId
+        ? sessions.filter((session) => String(session?.patientId || '') === String(historyPatientId))
+        : sessions;
+      setConsultationSessions(sortPlans(filtered));
+    } catch (e) {
+      setConsultationSessions([]);
+      setConsultationError(e?.payload?.message || e?.message || 'Unable to load consultation session history');
+    } finally {
+      setConsultationLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadPlans();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctorId, historyPatientId]);
+
+  useEffect(() => {
+    loadConsultationSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorId, historyPatientId]);
 
@@ -107,8 +158,36 @@ export default function DoctorCarePlans() {
     loadMedicineCatalog();
   }, []);
 
+  const medicineCatalogByName = useMemo(() => {
+    const map = new Map();
+    medicineCatalog.forEach((item) => {
+      const key = String(item?.name || '').trim().toLowerCase();
+      if (key) map.set(key, item);
+    });
+    return map;
+  }, [medicineCatalog]);
+
+  const totalMedicineCost = useMemo(() => {
+    return medicines.reduce((sum, medicine) => sum + parsePrice(medicine.price), 0);
+  }, [medicines]);
+
   const updateMedicine = (index, key, value) => {
     setMedicines((prev) => prev.map((m, i) => (i === index ? { ...m, [key]: value } : m)));
+  };
+
+  const updateMedicineName = (index, medicineName) => {
+    const matched = medicineCatalogByName.get(String(medicineName || '').trim().toLowerCase());
+    setMedicines((prev) =>
+      prev.map((m, i) =>
+        i === index
+          ? {
+              ...m,
+              medicineName,
+              price: matched?.price != null ? String(matched.price) : m.price,
+            }
+          : m,
+      ),
+    );
   };
 
   const updateService = (index, key, value) => {
@@ -135,25 +214,72 @@ export default function DoctorCarePlans() {
       setMedicineCatalogError('Medicine name is required');
       return;
     }
+    if (!newMedicine.price || parsePrice(newMedicine.price) <= 0) {
+      setMedicineCatalogError('Medicine price is required and must be greater than 0');
+      return;
+    }
 
     setAddingMedicine(true);
     setMedicineCatalogError('');
     try {
       await API.medicines.create({
         name: newMedicine.name.trim(),
-        genericName: newMedicine.genericName.trim(),
+        price: parsePrice(newMedicine.price),
         form: newMedicine.form.trim(),
         strength: newMedicine.strength.trim(),
         notes: newMedicine.notes.trim(),
         active: true,
       });
-      setNewMedicine({ name: '', genericName: '', form: '', strength: '', notes: '' });
+      setNewMedicine({ name: '', price: '', form: '', strength: '', notes: '' });
       await loadMedicineCatalog();
       setSuccess('Medicine added to catalog.');
     } catch (e2) {
       setMedicineCatalogError(e2?.payload?.message || e2?.message || 'Failed to add medicine');
     } finally {
       setAddingMedicine(false);
+    }
+  };
+
+  const startEditingMedicine = (medicine) => {
+    setEditingMedicineId(medicine.id || '');
+    setEditMedicineForm({
+      name: medicine.name || '',
+      price: medicine.price != null ? String(medicine.price) : '',
+      form: medicine.form || '',
+      strength: medicine.strength || '',
+      notes: medicine.notes || '',
+    });
+  };
+
+  const cancelEditingMedicine = () => {
+    setEditingMedicineId('');
+    setEditMedicineForm({ name: '', price: '', form: '', strength: '', notes: '' });
+  };
+
+  const handleUpdateMedicine = async (medicineId) => {
+    if (!medicineId) return;
+    if (!editMedicineForm.name.trim()) {
+      setMedicineCatalogError('Medicine name is required');
+      return;
+    }
+
+    setUpdatingMedicine(true);
+    setMedicineCatalogError('');
+    try {
+      await API.medicines.update(medicineId, {
+        name: editMedicineForm.name.trim(),
+        price: parsePrice(editMedicineForm.price),
+        form: editMedicineForm.form.trim(),
+        strength: editMedicineForm.strength.trim(),
+        notes: editMedicineForm.notes.trim(),
+      });
+      await loadMedicineCatalog();
+      setSuccess('Medicine updated successfully.');
+      cancelEditingMedicine();
+    } catch (err) {
+      setMedicineCatalogError(err?.payload?.message || err?.message || 'Failed to update medicine');
+    } finally {
+      setUpdatingMedicine(false);
     }
   };
 
@@ -183,6 +309,7 @@ export default function DoctorCarePlans() {
         .filter((m) => m.medicineName.trim())
         .map((m) => ({
           medicineName: m.medicineName.trim(),
+          price: parsePrice(m.price),
           dosage: m.dosage.trim(),
           frequency: m.frequency.trim(),
           durationDays: m.durationDays ? Number(m.durationDays) : null,
@@ -250,23 +377,66 @@ export default function DoctorCarePlans() {
         </div>
       ) : null}
 
+      <div className="bg-white border-2 border-slate-50 rounded-2xl p-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('create')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-black transition ${
+              activeTab === 'create' ? 'bg-[#182C61] text-white' : 'bg-slate-50 text-[#182C61] hover:bg-slate-100'
+            }`}
+          >
+            Create Care Plan
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-black transition ${
+              activeTab === 'history' ? 'bg-[#182C61] text-white' : 'bg-slate-50 text-[#182C61] hover:bg-slate-100'
+            }`}
+          >
+            Maintain History
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('medicine-services')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-black transition ${
+              activeTab === 'medicine-services' ? 'bg-[#182C61] text-white' : 'bg-slate-50 text-[#182C61] hover:bg-slate-100'
+            }`}
+          >
+            Medicine &amp; Services
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'medicine-services' ? (
+      <>
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-lg font-black text-[#182C61]">Medicine Catalog</h2>
-          <button
-            type="button"
-            onClick={loadMedicineCatalog}
-            className="px-3 py-1.5 rounded-lg bg-[#182C61] text-white text-xs font-black hover:bg-[#182C61]/85"
-          >
-            Refresh Catalog
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setIsMedicineModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg border border-[#182C61] text-[#182C61] text-xs font-black hover:bg-[#182C61]/5"
+            >
+              View Medicines
+            </button>
+            <button
+              type="button"
+              onClick={loadMedicineCatalog}
+              className="px-3 py-1.5 rounded-lg bg-[#182C61] text-white text-xs font-black hover:bg-[#182C61]/85"
+            >
+              Refresh Catalog
+            </button>
+          </div>
         </div>
 
         {medicineCatalogError ? (
           <p className="text-xs font-bold text-amber-700">{medicineCatalogError}</p>
         ) : null}
 
-        <form onSubmit={handleAddMedicineToCatalog} className="grid grid-cols-1 md:grid-cols-5 gap-2">
+        <form onSubmit={handleAddMedicineToCatalog} className="grid grid-cols-1 md:grid-cols-6 gap-2">
           <input
             className="px-3 py-2 rounded-lg border border-slate-200"
             placeholder="Medicine name"
@@ -275,10 +445,14 @@ export default function DoctorCarePlans() {
             required
           />
           <input
+            type="number"
+            min="0"
+            step="0.01"
             className="px-3 py-2 rounded-lg border border-slate-200"
-            placeholder="Generic name"
-            value={newMedicine.genericName}
-            onChange={(e) => setNewMedicine((prev) => ({ ...prev, genericName: e.target.value }))}
+            placeholder="Price (LKR)"
+            value={newMedicine.price}
+            onChange={(e) => setNewMedicine((prev) => ({ ...prev, price: e.target.value }))}
+            required
           />
           <input
             className="px-3 py-2 rounded-lg border border-slate-200"
@@ -318,6 +492,116 @@ export default function DoctorCarePlans() {
         </div>
       </div>
 
+      {isMedicineModalOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/40 p-4 sm:p-8 overflow-y-auto">
+          <div className="max-w-4xl mx-auto bg-white rounded-2xl border-2 border-slate-100 shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-[#182C61]">Added Medicines</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  cancelEditingMedicine();
+                  setIsMedicineModalOpen(false);
+                }}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            {medicineCatalogLoading ? (
+              <p className="text-sm font-bold text-[#808e9b]">Loading medicines...</p>
+            ) : medicineCatalog.length === 0 ? (
+              <p className="text-sm font-bold text-[#808e9b]">No medicines found.</p>
+            ) : (
+              <div className="space-y-3">
+                {medicineCatalog.map((item) => (
+                  <div key={item.id || item.name} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    {editingMedicineId === item.id ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <input
+                            className="px-3 py-2 rounded-lg border border-slate-200"
+                            placeholder="Medicine name"
+                            value={editMedicineForm.name}
+                            onChange={(e) => setEditMedicineForm((prev) => ({ ...prev, name: e.target.value }))}
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="px-3 py-2 rounded-lg border border-slate-200"
+                            placeholder="Price (LKR)"
+                            value={editMedicineForm.price}
+                            onChange={(e) => setEditMedicineForm((prev) => ({ ...prev, price: e.target.value }))}
+                          />
+                          <input
+                            className="px-3 py-2 rounded-lg border border-slate-200"
+                            placeholder="Form"
+                            value={editMedicineForm.form}
+                            onChange={(e) => setEditMedicineForm((prev) => ({ ...prev, form: e.target.value }))}
+                          />
+                          <input
+                            className="px-3 py-2 rounded-lg border border-slate-200"
+                            placeholder="Strength"
+                            value={editMedicineForm.strength}
+                            onChange={(e) => setEditMedicineForm((prev) => ({ ...prev, strength: e.target.value }))}
+                          />
+                        </div>
+                        <input
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200"
+                          placeholder="Notes"
+                          value={editMedicineForm.notes}
+                          onChange={(e) => setEditMedicineForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={updatingMedicine}
+                            onClick={() => handleUpdateMedicine(item.id)}
+                            className="px-3 py-1.5 rounded-lg bg-[#eb2f06] text-white text-xs font-black disabled:opacity-60"
+                          >
+                            {updatingMedicine ? 'Saving...' : 'Save Update'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditingMedicine}
+                            className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-black text-[#182C61]">{item.name || 'Unnamed medicine'}</p>
+                          <p className="text-xs font-bold text-[#808e9b] mt-1">
+                            LKR {formatCurrency(item.price)} | {item.form || 'No form'} | {item.strength || 'No strength'}
+                          </p>
+                          <p className="text-xs font-bold text-[#1e272e] mt-1">{item.notes || 'No notes'}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startEditingMedicine(item)}
+                          className="px-3 py-1.5 rounded-lg border border-[#182C61] text-[#182C61] text-xs font-black hover:bg-[#182C61]/5"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      </>
+      ) : null}
+
+      {activeTab === 'create' ? (
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-5">
         <h2 className="text-lg font-black text-[#182C61] mb-4">Create Care Plan</h2>
         <datalist id="medicine-catalog-options">
@@ -379,13 +663,23 @@ export default function DoctorCarePlans() {
             </div>
 
             {medicines.map((medicine, index) => (
-              <div key={`med-${index}`} className="grid grid-cols-1 md:grid-cols-5 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div key={`med-${index}`} className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-2">
                 <input
                   className="px-3 py-2 rounded-lg border border-slate-200"
                   list="medicine-catalog-options"
                   placeholder="Medicine (choose from catalog or type)"
                   value={medicine.medicineName}
-                  onChange={(e) => updateMedicine(index, 'medicineName', e.target.value)}
+                  onChange={(e) => updateMedicineName(index, e.target.value)}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+                  placeholder="Auto price (LKR)"
+                  value={medicine.price}
+                  readOnly
                 />
                 <input
                   className="px-3 py-2 rounded-lg border border-slate-200"
@@ -423,8 +717,22 @@ export default function DoctorCarePlans() {
                     <TrashIcon className="h-4 w-4" />
                   </button>
                 </div>
+                </div>
+                <p className="text-xs font-black text-[#182C61]">
+                  Line Cost: LKR {formatCurrency(parsePrice(medicine.price))}
+                </p>
+                {!medicine.price ? (
+                  <p className="text-[11px] font-bold text-amber-700">
+                    Price not found in catalog for this medicine name. Select a catalog medicine to auto-fill.
+                  </p>
+                ) : null}
               </div>
             ))}
+
+            <div className="rounded-xl border border-[#182C61]/20 bg-[#182C61]/5 p-3 flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-[#182C61]">Total Medicine Cost</span>
+              <span className="text-base font-black text-[#182C61]">LKR {formatCurrency(totalMedicineCost)}</span>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -479,10 +787,12 @@ export default function DoctorCarePlans() {
           </div>
         </form>
       </div>
+      ) : null}
 
-      <div className="bg-white border-2 border-slate-50 rounded-2xl p-5">
+      {activeTab === 'history' ? (
+      <div className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-5">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-          <h2 className="text-lg font-black text-[#182C61]">Care Plan History</h2>
+          <h2 className="text-lg font-black text-[#182C61]">Maintain History</h2>
           <input
             className="px-4 py-2.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:border-[#182C61] max-w-sm"
             placeholder="Filter by patient ID"
@@ -491,31 +801,68 @@ export default function DoctorCarePlans() {
           />
         </div>
 
-        {loading ? (
-          <p className="text-sm font-bold text-[#808e9b]">Loading care plans...</p>
-        ) : plans.length === 0 ? (
-          <p className="text-sm font-bold text-[#808e9b]">No care plans found.</p>
-        ) : (
-          <div className="space-y-3">
-            {plans.map((plan) => (
-              <div key={plan.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <ClipboardDocumentListIcon className="h-5 w-5 text-[#182C61]" />
-                    <p className="text-sm font-black text-[#182C61]">Patient: {plan.patientId || 'N/A'}</p>
+        <div className="rounded-2xl border border-slate-100 p-4">
+          <h3 className="text-base font-black text-[#182C61] mb-3">Care Plan History</h3>
+          {loading ? (
+            <p className="text-sm font-bold text-[#808e9b]">Loading care plans...</p>
+          ) : plans.length === 0 ? (
+            <p className="text-sm font-bold text-[#808e9b]">No care plans found.</p>
+          ) : (
+            <div className="space-y-3">
+              {plans.map((plan) => (
+                <div key={plan.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <ClipboardDocumentListIcon className="h-5 w-5 text-[#182C61]" />
+                      <p className="text-sm font-black text-[#182C61]">Patient: {plan.patientId || 'N/A'}</p>
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
+                      {plan.status || 'ACTIVE'}
+                    </span>
                   </div>
-                  <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
-                    {plan.status || 'ACTIVE'}
-                  </span>
+                  <p className="text-xs font-bold text-[#808e9b] mt-2">Appointment: {plan.appointmentId || 'N/A'}</p>
+                  <p className="text-xs font-bold text-[#808e9b] mt-1">Created: {formatDate(plan.createdAt)}</p>
+                  <p className="text-xs font-black text-[#182C61] mt-1">Total Bill: LKR {formatCurrency(plan.totalBill)}</p>
+                  <p className="text-xs font-bold text-[#1e272e] mt-2 whitespace-pre-wrap">{plan.consultationNotes || 'No notes'}</p>
                 </div>
-                <p className="text-xs font-bold text-[#808e9b] mt-2">Appointment: {plan.appointmentId || 'N/A'}</p>
-                <p className="text-xs font-bold text-[#808e9b] mt-1">Created: {formatDate(plan.createdAt)}</p>
-                <p className="text-xs font-bold text-[#1e272e] mt-2 whitespace-pre-wrap">{plan.consultationNotes || 'No notes'}</p>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-slate-100 p-4">
+          <h3 className="text-base font-black text-[#182C61] mb-3">Consultation Session History</h3>
+          {consultationError ? (
+            <p className="text-sm font-bold text-amber-700 mb-2">{consultationError}</p>
+          ) : null}
+          {consultationLoading ? (
+            <p className="text-sm font-bold text-[#808e9b]">Loading consultation sessions...</p>
+          ) : consultationSessions.length === 0 ? (
+            <p className="text-sm font-bold text-[#808e9b]">No consultation sessions found.</p>
+          ) : (
+            <div className="space-y-3">
+              {consultationSessions.map((session) => (
+                <div
+                  key={session.id || session.consultationId || `${session.patientId}-${session.createdAt}`}
+                  className="p-4 rounded-xl bg-slate-50 border border-slate-100"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-black text-[#182C61]">Patient: {session.patientId || 'N/A'}</p>
+                    <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
+                      {session.status || 'N/A'}
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-[#808e9b] mt-2">Doctor: {session.doctorId || 'N/A'}</p>
+                  <p className="text-xs font-bold text-[#808e9b] mt-1">Started: {formatDate(session.startedAt || session.createdAt)}</p>
+                  <p className="text-xs font-bold text-[#808e9b] mt-1">Ended: {formatDate(session.endedAt)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+      ) : null}
+
     </div>
   );
 }

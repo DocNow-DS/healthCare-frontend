@@ -12,7 +12,7 @@ export default function PaymentCancel() {
       <div className="max-w-2xl mx-auto">
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
           {/* Cancel Header */}
-          <div className="bg-gradient-to-r from-orange-500 to-red-500 px-6 py-8 text-center">
+          <div className="bg-linear-to-r from-orange-500 to-red-500 px-6 py-8 text-center">
             <div className="mx-auto w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4">
               <svg
                 className="w-10 h-10 text-orange-500"
@@ -34,7 +34,7 @@ export default function PaymentCancel() {
             {/* Info Message */}
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
               <div className="flex">
-                <div className="flex-shrink-0">
+                <div className="shrink-0">
                   <svg
                     className="h-5 w-5 text-yellow-400"
                     xmlns="http://www.w3.org/2000/svg"
@@ -85,10 +85,10 @@ export default function PaymentCancel() {
               <div className="grid grid-cols-1 gap-3">
                 {consultationId && (
                   <Link
-                    to={`/payment/checkout?consultationId=${consultationId}`}
+                    to={`/dashboard/payment/checkout?consultationId=${consultationId}`}
                     className="flex items-center p-4 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
                   >
-                    <div className="flex-shrink-0 mr-4">
+                    <div className="shrink-0 mr-4">
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                         <span className="text-xl">💳</span>
                       </div>
@@ -109,10 +109,10 @@ export default function PaymentCancel() {
                 )}
 
                 <Link
-                  to="/profile"
+                  to="/dashboard/appointments"
                   className="flex items-center p-4 border-2 border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors"
                 >
-                  <div className="flex-shrink-0 mr-4">
+                  <div className="shrink-0 mr-4">
                     <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
                       <span className="text-xl">📅</span>
                     </div>
@@ -132,10 +132,10 @@ export default function PaymentCancel() {
                 </Link>
 
                 <Link
-                  to="/payments"
+                  to="/dashboard/payments"
                   className="flex items-center p-4 border-2 border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors"
                 >
-                  <div className="flex-shrink-0 mr-4">
+                  <div className="shrink-0 mr-4">
                     <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
                       <span className="text-xl">📊</span>
                     </div>
