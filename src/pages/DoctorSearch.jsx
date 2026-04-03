@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { 
-  MagnifyingGlassIcon, 
+import {
+  MagnifyingGlassIcon,
   AdjustmentsHorizontalIcon,
   StarIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { API } from '../config/api';
 
@@ -15,6 +16,14 @@ export default function DoctorSearch() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('All');
+  const [bookingDoctor, setBookingDoctor] = useState(null);
+  const [booking, setBooking] = useState(false);
+  const [bookMessage, setBookMessage] = useState(null);
+  const [bookForm, setBookForm] = useState({
+    startTime: '',
+    consultationType: 'ONLINE',
+    notes: '',
+  });
 
   const loadDoctors = async () => {
     setLoading(true);
@@ -47,6 +56,38 @@ export default function DoctorSearch() {
     (selectedSpecialty === 'All' || String(doc.specialization || doc.specialty || '').toLowerCase() === selectedSpecialty.toLowerCase()) &&
     String(doc.name || doc.fullName || doc.username || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const openBooking = (doctor) => {
+    setBookMessage(null);
+    setBookForm({ startTime: '', consultationType: 'ONLINE', notes: '' });
+    setBookingDoctor(doctor);
+  };
+
+  const submitBooking = async (e) => {
+    e.preventDefault();
+    if (!bookingDoctor || !bookForm.startTime) return;
+    setBooking(true);
+    setBookMessage(null);
+    try {
+      const startTime =
+        bookForm.startTime.length === 16 ? `${bookForm.startTime}:00` : bookForm.startTime;
+      await API.patientAppointments.create({
+        doctorId: String(bookingDoctor.id),
+        startTime,
+        durationMinutes: 30,
+        consultationType: bookForm.consultationType,
+        notes: bookForm.notes || undefined,
+      });
+      setBookMessage({ type: 'ok', text: 'Appointment requested successfully.' });
+    } catch (err) {
+      setBookMessage({
+        type: 'err',
+        text: err?.message || 'Could not create appointment. Are you logged in as a patient?',
+      });
+    } finally {
+      setBooking(false);
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -90,7 +131,7 @@ export default function DoctorSearch() {
       ) : null}
 
       <div className="flex items-center space-x-3 overflow-x-auto pb-2 scrollbar-hide">
-        {SPECIALTY_FILTERS.map((spec) => (
+        {specialties.map((spec) => (
           <button
             key={spec}
             type="button"
@@ -109,9 +150,16 @@ export default function DoctorSearch() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
           <div className="col-span-full text-sm font-bold text-[#808e9b]">Loading doctors...</div>
+        ) : doctors.length === 0 ? (
+          <div className="col-span-full text-sm font-bold text-[#808e9b]">
+            No doctors returned. Try refreshing or check the doctor service.
+          </div>
         ) : filteredDoctors.length === 0 ? (
-          <div className="col-span-full text-sm font-bold text-[#808e9b]">No doctors match your filters.</div>
-        ) : filteredDoctors.map((doctor) => (
+          <div className="col-span-full text-sm font-bold text-[#808e9b]">
+            No doctors match your filters. Clear the search box or pick &quot;All&quot;.
+          </div>
+        ) : (
+          filteredDoctors.map((doctor) => (
           <div key={doctor.id} className="dashboard-card group hover:-translate-y-1 transition-all duration-500">
             <div className="flex items-start justify-between mb-6">
               <div className="relative">
@@ -136,33 +184,22 @@ export default function DoctorSearch() {
             </div>
 
             <div className="mt-6 pt-6 border-t-2 border-slate-50 flex items-center justify-between">
-               <div>
-                  <p className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest mb-1">Fee</p>
-                  <p className="text-lg font-black text-[#182C61]">LKR {doctor.consultationFee || doctor.fee || 'N/A'}</p>
-               </div>
-               <button className="btn-primary py-3 px-6 text-[9px] uppercase tracking-widest font-black">
-                  Book
-                </button>
+              <div>
+                <p className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest mb-1">Fee</p>
+                <p className="text-lg font-black text-[#182C61]">LKR {doctor.consultationFee || doctor.fee || 'N/A'}</p>
               </div>
+              <button
+                type="button"
+                onClick={() => openBooking(doctor)}
+                className="btn-primary py-3 px-6 text-[9px] uppercase tracking-widest font-black"
+              >
+                Book
+              </button>
             </div>
-          ))}
-        </div>
-      )}
-
-      {!loading &&
-        !loadError &&
-        doctors.length > 0 &&
-        filteredDoctors.length === 0 && (
-          <p className="text-center rounded-2xl border-2 border-slate-100 bg-slate-50 text-[#808e9b] font-bold py-12 px-6">
-            No doctor name or specialty matches your search text. Clear the search box or try different keywords.
-          </p>
+          </div>
+          ))
         )}
-
-      {!loading && !loadError && doctors.length === 0 && (
-        <p className="text-center text-[#808e9b] font-bold py-12">
-          No doctors returned. Try &quot;All&quot; or another specialty.
-        </p>
-      )}
+      </div>
 
       {bookingDoctor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#182C61]/40 backdrop-blur-sm">
@@ -177,7 +214,8 @@ export default function DoctorSearch() {
             </button>
             <h2 className="text-2xl font-black text-[#182C61] mb-1">Book appointment</h2>
             <p className="text-sm text-[#808e9b] font-bold mb-6">
-              {bookingDoctor.name || bookingDoctor.username} — {bookingDoctor.specialty || 'Doctor'}
+              {bookingDoctor.name || bookingDoctor.fullName || bookingDoctor.username} —{' '}
+              {bookingDoctor.specialization || bookingDoctor.specialty || 'Doctor'}
             </p>
             <form onSubmit={submitBooking} className="space-y-4">
               <div>

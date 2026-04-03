@@ -315,6 +315,14 @@ export const API = {
     getMyPayments: () => apiClient(`${services.payment}/api/v1/payments/patient/my-payments`),
   },
 
+  patientAppointments: {
+    create: (data) =>
+      apiClient(`${services.appointment}/api/patient/appointments`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+
 };
 
 export default API;
