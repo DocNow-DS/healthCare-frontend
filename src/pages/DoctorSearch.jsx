@@ -25,14 +25,27 @@ export default function DoctorSearch() {
     notes: '',
   });
 
-  const loadDoctors = async () => {
+  /** Specialty chips; built when loading with &quot;All&quot; so filters stay complete while viewing one specialty. */
+  const [specialtyOptions, setSpecialtyOptions] = useState(['All']);
+
+  const loadDoctors = async (specialtyFilter) => {
     setLoading(true);
     setError('');
     try {
-      const list = await API.doctors.getAll();
-      setDoctors(Array.isArray(list) ? list : []);
+      const param = specialtyFilter === 'All' ? undefined : specialtyFilter;
+      const list = await API.patientBooking.listDoctors(param);
+      const arr = Array.isArray(list) ? list : [];
+      setDoctors(arr);
+      if (specialtyFilter === 'All') {
+        const next = new Set(['All']);
+        arr.forEach((doc) => {
+          const spec = doc?.specialty || doc?.specialization;
+          if (typeof spec === 'string' && spec.trim()) next.add(spec.trim());
+        });
+        setSpecialtyOptions(Array.from(next));
+      }
     } catch (e) {
-      setError(e?.message || 'Unable to load doctors from backend');
+      setError(e?.message || 'Unable to load doctors from appointment service');
       setDoctors([]);
     } finally {
       setLoading(false);
@@ -40,21 +53,18 @@ export default function DoctorSearch() {
   };
 
   useEffect(() => {
-    loadDoctors();
-  }, []);
+    loadDoctors(selectedSpecialty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch when specialty chip changes
+  }, [selectedSpecialty]);
 
-  const specialties = useMemo(() => {
-    const set = new Set(['All']);
-    doctors.forEach((doc) => {
-      const spec = doc?.specialization || doc?.specialty;
-      if (typeof spec === 'string' && spec.trim()) set.add(spec.trim());
-    });
-    return Array.from(set);
-  }, [doctors]);
-
-  const filteredDoctors = doctors.filter(doc => 
-    (selectedSpecialty === 'All' || String(doc.specialization || doc.specialty || '').toLowerCase() === selectedSpecialty.toLowerCase()) &&
-    String(doc.name || doc.fullName || doc.username || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredDoctors = useMemo(
+    () =>
+      doctors.filter((doc) =>
+        String(doc.name || doc.fullName || doc.username || '')
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()),
+      ),
+    [doctors, searchTerm],
   );
 
   const openBooking = (doctor) => {
@@ -97,8 +107,10 @@ export default function DoctorSearch() {
             Find specialists
           </h1>
           <p className="text-sm text-[#808e9b] font-bold mb-4">
-            Filter by specialty, then search by name. Book sends a request to the appointment service using your
-            account.
+            Doctors come from the appointment service (
+            <code className="text-xs bg-slate-100 px-1 rounded">/api/patient/booking/doctors</code>
+            , optional <code className="text-xs bg-slate-100 px-1 rounded">?specialty=…</code>). Search filters the
+            list by name only.
           </p>
           <div className="relative group">
             <MagnifyingGlassIcon className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[#808e9b] group-focus-within:text-[#182C61] transition-colors" />
@@ -114,7 +126,7 @@ export default function DoctorSearch() {
         <div className="flex items-center space-x-3">
           <button
             type="button"
-            onClick={loadDoctors}
+            onClick={() => loadDoctors(selectedSpecialty)}
             className="p-4 bg-white border-2 border-slate-50 rounded-xl text-[#182C61] hover:border-[#182C61] transition-all relative"
             title="Refresh doctors"
           >
@@ -131,7 +143,7 @@ export default function DoctorSearch() {
       ) : null}
 
       <div className="flex items-center space-x-3 overflow-x-auto pb-2 scrollbar-hide">
-        {specialties.map((spec) => (
+        {specialtyOptions.map((spec) => (
           <button
             key={spec}
             type="button"
@@ -163,13 +175,17 @@ export default function DoctorSearch() {
           <div key={doctor.id} className="dashboard-card group hover:-translate-y-1 transition-all duration-500">
             <div className="flex items-start justify-between mb-6">
               <div className="relative">
-                <img 
-                  src={doctor.image || fallbackImage} 
-                  alt={doctor.name || doctor.fullName || 'Doctor'} 
+                <img
+                  src={doctor.profileImageUrl || doctor.image || fallbackImage}
+                  alt={doctor.name || doctor.fullName || 'Doctor'}
                   className="w-20 h-20 rounded-2xl object-cover grayscale group-hover:grayscale-0 transition-all duration-700"
                 />
                 <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-white rounded-lg shadow-md flex items-center justify-center border-2 border-slate-50">
-                  <div className={`h-2.5 w-2.5 rounded-full ${doctor.isAvailable ? 'bg-[#eb2f06] animate-pulse' : 'bg-slate-300'}`}></div>
+                  <div
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      doctor.enabled !== false ? 'bg-[#eb2f06] animate-pulse' : 'bg-slate-300'
+                    }`}
+                  ></div>
                 </div>
               </div>
               <div className="flex items-center space-x-1 bg-[#eb2f06]/5 px-2 py-1 rounded-full">

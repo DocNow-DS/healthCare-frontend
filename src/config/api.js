@@ -116,8 +116,8 @@ const apiClient = async (url, options = {}) => {
       err.payload = payload;
       throw err;
     }
-    
-    return await response.json();
+
+    return payload
   } catch (error) {
     console.error('API Error:', error);
     throw error;
@@ -321,6 +321,18 @@ export const API = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+  },
+
+  /** Appointment service: doctor directory for booking (optional `specialty` query). */
+  patientBooking: {
+    listDoctors: (specialty) => {
+      const base = `${services.appointment}/api/patient/booking/doctors`
+      const q =
+        typeof specialty === 'string' && specialty.trim().length > 0
+          ? `?specialty=${encodeURIComponent(specialty.trim())}`
+          : ''
+      return apiClient(`${base}${q}`, { method: 'GET' })
+    },
   },
 
 };
