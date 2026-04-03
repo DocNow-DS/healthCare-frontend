@@ -23,23 +23,11 @@ export default function VideoConsultation() {
    }, [authUser]);
 
    const [availablePatients, setAvailablePatients] = useState([]);
+   const [doctorAppointments, setDoctorAppointments] = useState([]);
    const [patientsLoading, setPatientsLoading] = useState(false);
    const [patientsError, setPatientsError] = useState('');
-   const [selectedPatientId, setSelectedPatientId] = useState('');
-   const [scheduledDate, setScheduledDate] = useState('');
-   const [scheduledTime, setScheduledTime] = useState('');
-
-   const timeOptions = useMemo(() => {
-      const options = [];
-      for (let hour = 0; hour < 24; hour += 1) {
-         for (let minute = 0; minute < 60; minute += 15) {
-            const hh = String(hour).padStart(2, '0');
-            const mm = String(minute).padStart(2, '0');
-            options.push(`${hh}:${mm}`);
-         }
-      }
-      return options;
-   }, []);
+   const [selectedApprovedAppointmentId, setSelectedApprovedAppointmentId] = useState('');
+   const [digitalNow, setDigitalNow] = useState(new Date());
 
    const [myConsultations, setMyConsultations] = useState([]);
    const [consultationsLoading, setConsultationsLoading] = useState(false);
@@ -49,6 +37,86 @@ export default function VideoConsultation() {
    const [embedStuck, setEmbedStuck] = useState(false);
    const [isBusy, setIsBusy] = useState(false);
    const [error, setError] = useState('');
+
+   const appointmentPatientIds = useMemo(() => {
+      const ids = new Set();
+      doctorAppointments.forEach((a) => {
+         const id = a?.patientId;
+         if (id != null && String(id).trim().length > 0) {
+            ids.add(String(id));
+         }
+      });
+      return ids;
+   }, [doctorAppointments]);
+
+   const consultationPatients = useMemo(() => {
+      if (!isDoctor) return availablePatients;
+      if (appointmentPatientIds.size === 0) return [];
+      return availablePatients.filter((p) => {
+         const pid = p?.id || p?.userId || p?.username;
+         return pid != null && appointmentPatientIds.has(String(pid));
+      });
+   }, [availablePatients, appointmentPatientIds, isDoctor]);
+
+   const appointmentIds = useMemo(() => {
+      const ids = new Set();
+      doctorAppointments.forEach((a) => {
+         if (a?.id != null) ids.add(String(a.id));
+      });
+      return ids;
+   }, [doctorAppointments]);
+
+   const patientLookup = useMemo(() => {
+      const map = new Map();
+      availablePatients.forEach((p) => {
+         const pid = p?.id || p?.userId || p?.username;
+         if (pid != null) {
+            map.set(String(pid), p?.name || p?.username || String(pid));
+         }
+      });
+      return map;
+   }, [availablePatients]);
+
+   const visibleConsultations = useMemo(() => {
+      if (!isDoctor) return myConsultations;
+      if (appointmentPatientIds.size === 0 && appointmentIds.size === 0) return [];
+
+      return myConsultations.filter((c) => {
+         const consultationPatientId = c?.patientId != null ? String(c.patientId) : '';
+         const consultationAppointmentId = c?.appointmentId != null ? String(c.appointmentId) : '';
+         return appointmentPatientIds.has(consultationPatientId) || appointmentIds.has(consultationAppointmentId);
+      });
+   }, [appointmentIds, appointmentPatientIds, isDoctor, myConsultations]);
+
+   const consultationsByDate = useMemo(() => {
+      const groups = new Map();
+      visibleConsultations.forEach((c) => {
+         const rawDate = c?.scheduledAt || c?.startedAt || c?.createdAt;
+         const dayKey = toDateKey(rawDate);
+         if (!groups.has(dayKey)) groups.set(dayKey, []);
+         groups.get(dayKey).push(c);
+      });
+
+      return Array.from(groups.entries())
+         .sort((a, b) => b[0].localeCompare(a[0]))
+         .map(([dayKey, list]) => ({
+            dayKey,
+            list: [...list].sort((a, b) => {
+               const at = new Date(a?.scheduledAt || a?.startedAt || a?.createdAt || 0).getTime();
+               const bt = new Date(b?.scheduledAt || b?.startedAt || b?.createdAt || 0).getTime();
+               return bt - at;
+            }),
+         }));
+   }, [visibleConsultations]);
+
+   const approvedAppointments = useMemo(() => {
+      return doctorAppointments.filter((a) => String(a?.status || '').toUpperCase() === 'ACCEPTED');
+   }, [doctorAppointments]);
+
+   const selectedApprovedAppointment = useMemo(() => {
+      if (!selectedApprovedAppointmentId) return null;
+      return approvedAppointments.find((a) => String(a?.id) === String(selectedApprovedAppointmentId)) || null;
+   }, [approvedAppointments, selectedApprovedAppointmentId]);
 
    const embedUrl = useMemo(() => {
       if (!jitsiUrl) return '';
@@ -94,6 +162,16 @@ export default function VideoConsultation() {
       }
    };
 
+   const loadDoctorAppointments = async () => {
+      if (!isDoctor || !myId) return;
+      try {
+         const list = await API.doctorAppointments.list(myId);
+         setDoctorAppointments(Array.isArray(list) ? list : []);
+      } catch {
+         setDoctorAppointments([]);
+      }
+   };
+
    const loadMyConsultations = async () => {
       if (!myId) return;
       setConsultationsLoading(true);
@@ -118,8 +196,9 @@ export default function VideoConsultation() {
 
    useEffect(() => {
       loadPatientsIfDoctor();
+      loadDoctorAppointments();
       // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [isDoctor]);
+   }, [isDoctor, myId]);
 
    useEffect(() => {
       loadMyConsultations();
@@ -134,6 +213,13 @@ export default function VideoConsultation() {
       return () => clearInterval(timer);
       // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [myId, isDoctor]);
+
+   useEffect(() => {
+      const timer = setInterval(() => {
+         setDigitalNow(new Date());
+      }, 1000);
+      return () => clearInterval(timer);
+   }, []);
 
    useEffect(() => {
       if (isDoctor) return;
@@ -157,19 +243,14 @@ export default function VideoConsultation() {
          setError('Missing doctor id. Please login again.');
          return;
       }
-      if (!selectedPatientId) {
-         setError('Select a patient');
-         return;
-      }
-      if (!scheduledDate || !scheduledTime) {
-         setError('Select date and time');
+      if (!selectedApprovedAppointment) {
+         setError('Select an approved appointment first');
          return;
       }
       if (isBusy) return;
 
-      const appointmentId = `${myId}-${selectedPatientId}-${scheduledDate}-${scheduledTime}`
-         .toLowerCase()
-         .replace(/[^a-z0-9_-]/g, '-');
+      const appointmentId = String(selectedApprovedAppointment.id);
+      const selectedPatientId = selectedApprovedAppointment.patientId;
 
       setIsBusy(true);
       setError('');
@@ -217,70 +298,84 @@ export default function VideoConsultation() {
          ) : null}
 
          {isDoctor ? (
-            <div className="bg-white border border-slate-50 p-3 rounded-lg shadow-sm">
-               <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xs font-black text-primary-500 tracking-tight">Schedule Consultation</h3>
-                  <span className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest">
-                     {patientsLoading ? 'Loading…' : `${availablePatients.length}`}
-                  </span>
+            <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-100 p-4 rounded-xl shadow-sm">
+               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+                  <div>
+                     <h3 className="text-sm font-black text-primary-500 tracking-tight">Generate Consultation Link</h3>
+                     <p className="text-[10px] font-bold text-[#808e9b] uppercase tracking-widest mt-0.5">
+                        Only approved appointments can generate consultation links
+                     </p>
+                  </div>
+                  <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                     <span className="px-2 py-1 rounded-full bg-primary-50 text-primary-500 border border-primary-100">
+                        Appointments: {doctorAppointments.length}
+                     </span>
+                     <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                        Approved: {patientsLoading ? '…' : approvedAppointments.length}
+                     </span>
+                  </div>
                </div>
 
                {patientsError ? (
                   <div className="text-[10px] font-bold text-accent-red mb-2">{patientsError}</div>
                ) : null}
 
-               <div className="flex flex-col md:flex-row gap-2 md:items-center">
-                  <select
-                     value={selectedPatientId}
-                     onChange={(e) => setSelectedPatientId(e.target.value)}
-                     disabled={patientsLoading || isBusy}
-                     className="flex-1 px-2 py-2 bg-slate-50 border border-transparent rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500/5 focus:border-primary-500 text-xs text-[#1e272e] font-black transition-all"
-                  >
-                     <option value="">{patientsLoading ? 'Loading patients…' : 'Select a patient…'}</option>
-                     {availablePatients.map((p) => {
-                        const pid = p?.id || p?.userId;
-                        const label = `${p?.name || p?.username || 'Patient'} (ID: ${pid})`;
-                        return (
-                           <option key={pid} value={pid}>
-                              {label}
-                           </option>
-                        );
-                     })}
-                  </select>
+               {!patientsLoading && approvedAppointments.length === 0 ? (
+                  <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-bold text-amber-800 uppercase tracking-widest">
+                     No approved appointments found. Approve an appointment first.
+                  </div>
+               ) : null}
 
-                  <input
-                     id="scheduledDate"
-                     name="scheduledDate"
-                     type="date"
-                     value={scheduledDate}
-                     onChange={(e) => setScheduledDate(e.target.value)}
-                     disabled={isBusy}
-                     className="flex-1 px-2 py-2 bg-slate-50 border border-transparent rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500/5 focus:border-primary-500 text-xs text-[#1e272e] font-black transition-all"
-                  />
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                  <div className="md:col-span-2">
+                     <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-1">Approved Appointment</label>
+                     <select
+                        value={selectedApprovedAppointmentId}
+                        onChange={(e) => setSelectedApprovedAppointmentId(e.target.value)}
+                        disabled={patientsLoading || isBusy || approvedAppointments.length === 0}
+                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 text-xs text-[#1e272e] font-black transition-all"
+                     >
+                        <option value="">{patientsLoading ? 'Loading appointments…' : 'Select approved appointment…'}</option>
+                        {approvedAppointments.map((a) => {
+                           const pid = a?.patientId || 'N/A';
+                           const label = `#${a?.id} - Patient ${pid} - ${formatAppointmentTime(a?.startTime)}`;
+                           return (
+                              <option key={a?.id} value={a?.id}>
+                                 {label}
+                              </option>
+                           );
+                        })}
+                     </select>
+                  </div>
 
-                  <select
-                     id="scheduledTime"
-                     name="scheduledTime"
-                     value={scheduledTime}
-                     onChange={(e) => setScheduledTime(e.target.value)}
-                     disabled={isBusy}
-                     className="flex-1 px-2 py-2 bg-slate-50 border border-transparent rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500/5 focus:border-primary-500 text-xs text-[#1e272e] font-black transition-all"
-                  >
-                     <option value="">Select time…</option>
-                     {timeOptions.map((t) => (
-                        <option key={t} value={t}>
-                           {t}
-                        </option>
-                     ))}
-                  </select>
+                  <div>
+                     <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-1">Patient</label>
+                     <div className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-[#1e272e] font-black">
+                        {selectedApprovedAppointment?.patientId || '—'}
+                     </div>
+                  </div>
 
+                  <div>
+                     <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-1">Appointment Time</label>
+                     <div className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-[#1e272e] font-black">
+                        {formatAppointmentTime(selectedApprovedAppointment?.startTime)}
+                     </div>
+                     <div className="mt-1.5 rounded-md bg-slate-900 px-2 py-1 text-center">
+                        <span className="text-[10px] font-black tracking-widest text-emerald-300">
+                           {formatDigitalTime(digitalNow)}
+                        </span>
+                     </div>
+                  </div>
+               </div>
+
+               <div className="mt-3 flex justify-end">
                   <button
                      type="button"
                      onClick={handleGenerateLink}
-                     disabled={isBusy || !selectedPatientId || !scheduledDate || !scheduledTime}
-                     className="px-4 py-2 text-[10px] font-black rounded-md bg-primary-500 text-white hover:bg-primary-500/90 transition-all uppercase tracking-widest disabled:opacity-60"
+                     disabled={isBusy || !selectedApprovedAppointmentId || approvedAppointments.length === 0}
+                     className="px-5 py-2.5 text-[10px] font-black rounded-lg bg-primary-500 text-white hover:bg-primary-500/90 transition-all uppercase tracking-widest disabled:opacity-60"
                   >
-                     {isBusy ? 'Working…' : 'Generate Link'}
+                     {isBusy ? 'Generating...' : 'Generate Link'}
                   </button>
                </div>
             </div>
@@ -294,34 +389,50 @@ export default function VideoConsultation() {
                </span>
             </div>
 
-            <div className="space-y-2 max-h-[220px] overflow-y-auto">
-               {myConsultations.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded-md border border-slate-50">
-                     <div>
-                        <div className="text-[11px] font-black text-[#1e272e]">
-                           {c.status}
-                           {c.startedAt ? ` • ${new Date(c.startedAt).toLocaleString()}` : ''}
-                        </div>
-                        <div className="text-[9px] font-bold text-[#808e9b]">Room: {c.roomName || c.roomId}</div>
+            <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
+               {consultationsByDate.map((group) => (
+                  <div key={group.dayKey} className="rounded-lg border border-slate-100 bg-slate-50/70">
+                     <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-primary-500">
+                           {formatDateHeading(group.dayKey)}
+                        </p>
+                        <span className="text-[9px] font-black text-[#808e9b]">{group.list.length} sessions</span>
                      </div>
-                     {(c.sessionUrl || c.jitsiUrl) ? (
-                        <div className="flex items-center gap-2">
-                           <button
-                              type="button"
-                              onClick={() => {
-                                 const link = c.sessionUrl || c.jitsiUrl || '';
-                                 setJitsiUrl(link);
-                              }}
-                              className="px-2 py-1 text-[9px] font-black rounded-md border border-slate-50 text-primary-500 hover:border-primary-500 transition-all uppercase tracking-widest"
-                           >
-                              Join Here
-                           </button>
-                        </div>
-                     ) : null}
+
+                     <div className="px-3 py-2 space-y-2">
+                        {group.list.map((c) => (
+                           <div key={c.id} className="flex items-center justify-between rounded-md border border-slate-100 bg-white px-2 py-2">
+                              <div className="min-w-0">
+                                 <div className="text-[10px] font-black text-[#1e272e] uppercase tracking-wider">
+                                    {c.status || 'UNKNOWN'} • {formatShortDateTime(c?.scheduledAt || c?.startedAt || c?.createdAt)}
+                                 </div>
+                                 <div className="text-[9px] font-bold text-[#808e9b] mt-0.5 truncate">
+                                    Patient: {patientLookup.get(String(c?.patientId || '')) || c?.patientId || 'N/A'}
+                                 </div>
+                                 <div className="text-[9px] font-bold text-[#808e9b] truncate">
+                                    Appointment: {c?.appointmentId || 'N/A'} • Room: {c?.roomName || c?.roomId || 'N/A'}
+                                 </div>
+                              </div>
+
+                              {(c.sessionUrl || c.jitsiUrl) ? (
+                                 <button
+                                    type="button"
+                                    onClick={() => {
+                                       const link = c.sessionUrl || c.jitsiUrl || '';
+                                       setJitsiUrl(link);
+                                    }}
+                                    className="ml-2 px-2 py-1 text-[9px] font-black rounded-md border border-slate-200 text-primary-500 hover:border-primary-500 transition-all uppercase tracking-widest"
+                                 >
+                                    Join
+                                 </button>
+                              ) : null}
+                           </div>
+                        ))}
+                     </div>
                   </div>
                ))}
 
-               {!consultationsLoading && myConsultations.length === 0 ? (
+               {!consultationsLoading && consultationsByDate.length === 0 ? (
                   <div className="text-[10px] font-bold text-[#808e9b]">No consultations</div>
                ) : null}
             </div>
@@ -355,4 +466,43 @@ export default function VideoConsultation() {
          ) : null}
       </div>
    );
+}
+
+function formatDigitalTime(date) {
+   return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+   });
+}
+
+function formatAppointmentTime(value) {
+   if (!value) return '—';
+   const d = new Date(value);
+   if (Number.isNaN(d.getTime())) return String(value);
+   return d.toLocaleString();
+}
+
+function toDateKey(value) {
+   const d = new Date(value || Date.now());
+   if (Number.isNaN(d.getTime())) return 'unknown-date';
+   const yyyy = d.getFullYear();
+   const mm = String(d.getMonth() + 1).padStart(2, '0');
+   const dd = String(d.getDate()).padStart(2, '0');
+   return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatDateHeading(dayKey) {
+   if (!dayKey || dayKey === 'unknown-date') return 'Unknown Date';
+   const d = new Date(`${dayKey}T00:00:00`);
+   if (Number.isNaN(d.getTime())) return dayKey;
+   return d.toLocaleDateString([], { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatShortDateTime(value) {
+   if (!value) return '—';
+   const d = new Date(value);
+   if (Number.isNaN(d.getTime())) return String(value);
+   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }

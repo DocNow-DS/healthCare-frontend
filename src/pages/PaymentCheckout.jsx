@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import API from '../config/api.js';
 
+const MIN_CHECKOUT_LKR = 200;
+
 export default function PaymentCheckout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -10,11 +12,11 @@ export default function PaymentCheckout() {
 
   // Get consultation details from location state or query params
   const consultationId = location.state?.consultationId || new URLSearchParams(location.search).get('consultationId');
-  const amount = location.state?.amount || new URLSearchParams(location.search).get('amount') || 2500;
-  const doctorName = location.state?.doctorName || 'Doctor';
+  const amount = Number(location.state?.amount || new URLSearchParams(location.search).get('amount') || 2500);
+  const doctorName = location.state?.doctorName || new URLSearchParams(location.search).get('doctorName') || 'Doctor';
 
   const [formData, setFormData] = useState({
-    amountLKR: amount,
+    amountLKR: Number.isFinite(amount) && amount >= MIN_CHECKOUT_LKR ? Math.round(amount) : Math.max(2500, MIN_CHECKOUT_LKR),
     currency: 'lkr',
     consultationId: consultationId || '',
     customerEmail: '',
@@ -45,21 +47,36 @@ export default function PaymentCheckout() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    const normalizedAmount = Number(formData.amountLKR);
+    if (!formData.consultationId) {
+      setError('Consultation id is missing. Please go back and retry from Bill Requests.');
+      return;
+    }
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount < MIN_CHECKOUT_LKR) {
+      setError(`Amount must be at least ${MIN_CHECKOUT_LKR} LKR.`);
+      return;
+    }
+    if (!formData.customerEmail || !String(formData.customerEmail).includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const successParams = new URLSearchParams({
-        session_id: '{CHECKOUT_SESSION_ID}',
         consultationId: String(formData.consultationId || ''),
       });
       const cancelParams = new URLSearchParams({
-        consultation_id: String(formData.consultationId || ''),
+        consultationId: String(formData.consultationId || ''),
       });
       const successUrl = `${window.location.origin}/dashboard/payment/success?${successParams.toString()}`;
       const cancelUrl = `${window.location.origin}/dashboard/payment/cancel?${cancelParams.toString()}`;
 
       const requestData = {
         ...formData,
+        amountLKR: Math.round(normalizedAmount),
         successUrl,
         cancelUrl,
       };
@@ -68,10 +85,11 @@ export default function PaymentCheckout() {
       const response = await API.payment.createCheckoutSession(requestData);
 
       // Redirect to Stripe checkout
-      if (response.checkoutUrl) {
-        window.location.href = response.checkoutUrl;
+      const redirectUrl = response?.checkoutUrl || response?.url || response?.redirectUrl;
+      if (redirectUrl) {
+        window.location.assign(redirectUrl);
       } else {
-        throw new Error('No checkout URL received');
+        throw new Error('Gateway did not return a checkout URL.');
       }
     } catch (err) {
       console.error('Payment checkout error:', err);
@@ -118,10 +136,11 @@ export default function PaymentCheckout() {
 
   return (
     <section className="page">
-      <div className="max-w-2xl mx-auto">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Complete Your Payment</h1>
-          <p className="text-gray-600">Secure payment powered by Stripe</p>
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-primary-50 p-6">
+          <p className="text-[10px] font-black uppercase tracking-widest text-[#808e9b]">Payment Gateway</p>
+          <h1 className="text-3xl font-black text-primary-500 mt-2 tracking-tight">Complete Your Payment</h1>
+          <p className="text-sm font-semibold text-[#808e9b] mt-1">Secure Stripe checkout for this consultation bill.</p>
         </div>
 
         {error && (
@@ -134,31 +153,31 @@ export default function PaymentCheckout() {
           </div>
         )}
 
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
           {/* Payment Summary */}
-          <div className="bg-linear-to-r from-blue-600 to-purple-600 px-6 py-4">
-            <h2 className="text-lg font-semibold text-white">Payment Summary</h2>
+          <div className="bg-primary-500 px-6 py-4">
+            <h2 className="text-lg font-black text-white tracking-tight">Payment Summary</h2>
           </div>
 
           <div className="p-6">
             <div className="space-y-4">
               <div className="flex justify-between items-center py-3 border-b border-gray-200">
-                <span className="text-gray-600">Consultation ID</span>
-                <span className="font-medium text-gray-900">
+                <span className="text-gray-600 font-semibold">Consultation ID</span>
+                <span className="font-black text-gray-900">
                   #{formData.consultationId.slice(-8).toUpperCase()}
                 </span>
               </div>
               <div className="flex justify-between items-center py-3 border-b border-gray-200">
-                <span className="text-gray-600">Doctor</span>
-                <span className="font-medium text-gray-900">{doctorName}</span>
+                <span className="text-gray-600 font-semibold">Doctor</span>
+                <span className="font-black text-gray-900">{doctorName}</span>
               </div>
               <div className="flex justify-between items-center py-3 border-b border-gray-200">
-                <span className="text-gray-600">Service</span>
-                <span className="font-medium text-gray-900">Medical Consultation</span>
+                <span className="text-gray-600 font-semibold">Service</span>
+                <span className="font-black text-gray-900">Medical Consultation</span>
               </div>
               <div className="flex justify-between items-center py-3">
-                <span className="text-lg font-semibold text-gray-900">Total Amount</span>
-                <span className="text-2xl font-bold text-blue-600">
+                <span className="text-lg font-black text-gray-900">Total Amount</span>
+                <span className="text-2xl font-black text-primary-500">
                   LKR {formData.amountLKR.toLocaleString()}
                 </span>
               </div>
@@ -189,14 +208,15 @@ export default function PaymentCheckout() {
                 <input
                   type="number"
                   value={formData.amountLKR}
-                  onChange={(e) => handleInputChange('amountLKR', parseInt(e.target.value))}
+                  onChange={(e) => handleInputChange('amountLKR', Number(e.target.value))}
                   required
-                  min="1"
+                  min={String(MIN_CHECKOUT_LKR)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p className="text-xs text-[#808e9b] mt-1 font-semibold">Minimum gateway amount: {MIN_CHECKOUT_LKR} LKR</p>
               </div>
 
-              <div className="bg-blue-50 rounded-md p-4">
+              <div className="bg-primary-50 rounded-xl p-4 border border-primary-100">
                 <div className="flex items-start">
                   <div className="shrink-0">
                     <svg
@@ -213,7 +233,7 @@ export default function PaymentCheckout() {
                     </svg>
                   </div>
                   <div className="ml-3">
-                    <p className="text-sm text-blue-700">
+                    <p className="text-sm text-primary-700 font-semibold">
                       You will be redirected to Stripe's secure checkout page to complete your payment.
                     </p>
                   </div>
@@ -232,7 +252,7 @@ export default function PaymentCheckout() {
                 >
                   <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
-                <span>Secure SSL Encryption</span>
+                <span className="font-semibold">Secure SSL Encryption</span>
               </div>
             </div>
 
@@ -240,7 +260,7 @@ export default function PaymentCheckout() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-black text-white bg-accent-red hover:bg-accent-red/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-red disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <>
@@ -267,14 +287,14 @@ export default function PaymentCheckout() {
                     Processing...
                   </>
                 ) : (
-                  'Proceed to Payment'
+                  'Proceed to Gateway Payment'
                 )}
               </button>
 
               <button
                 type="button"
                 onClick={() => navigate('/profile')}
-                className="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-xl shadow-sm text-sm font-black text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               >
                 Cancel
               </button>
@@ -283,22 +303,9 @@ export default function PaymentCheckout() {
         </div>
 
         {/* Supported Payment Methods */}
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-500 mb-3">Supported Payment Methods</p>
-          <div className="flex justify-center items-center space-x-4">
-            <div className="bg-white px-3 py-2 rounded shadow-sm">
-              <span className="text-lg">💳</span>
-              <span className="text-sm text-gray-700 ml-1">Visa</span>
-            </div>
-            <div className="bg-white px-3 py-2 rounded shadow-sm">
-              <span className="text-lg">💳</span>
-              <span className="text-sm text-gray-700 ml-1">Mastercard</span>
-            </div>
-            <div className="bg-white px-3 py-2 rounded shadow-sm">
-              <span className="text-lg">🏦</span>
-              <span className="text-sm text-gray-700 ml-1">Bank Transfer</span>
-            </div>
-          </div>
+        <div className="mt-2 text-center rounded-2xl border border-slate-200 bg-white px-4 py-3">
+          <p className="text-sm font-black text-primary-500 mb-2">Supported Payment Methods</p>
+          <p className="text-xs font-semibold text-[#808e9b]">Visa • Mastercard • Apple Pay • Google Pay • Bank Cards</p>
         </div>
       </div>
     </section>

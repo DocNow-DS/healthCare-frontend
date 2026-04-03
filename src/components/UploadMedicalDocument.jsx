@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 const ACCEPTED_TYPES = '.pdf,.jpg,.jpeg,.png,.doc,.docx';
 
@@ -7,6 +7,7 @@ export default function UploadMedicalDocument({ onUpload }) {
   const [description, setDescription] = useState('');
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
+  const fileInputRef = useRef(null);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -22,6 +23,9 @@ export default function UploadMedicalDocument({ onUpload }) {
       await onUpload(selectedFile, description.trim());
       setSelectedFile(null);
       setDescription('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       setMessage('Report uploaded successfully.');
     } catch (error) {
       setMessage(error?.message || 'Upload failed');
@@ -34,12 +38,15 @@ export default function UploadMedicalDocument({ onUpload }) {
     <form onSubmit={handleSubmit} className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-3">
       <h2 className="text-lg font-black text-primary-500">Upload New Report</h2>
       <input
-        key={selectedFile ? selectedFile.name : 'empty'}
+        ref={fileInputRef}
         type="file"
         accept={ACCEPTED_TYPES}
         onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
         className="block w-full text-sm font-semibold text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-primary-500 file:px-3 file:py-2 file:text-white hover:file:bg-primary-500/85"
       />
+      {selectedFile ? (
+        <p className="text-xs font-semibold text-slate-500">Selected: {selectedFile.name}</p>
+      ) : null}
       <textarea
         value={description}
         onChange={(e) => setDescription(e.target.value)}

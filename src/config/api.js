@@ -92,20 +92,19 @@ const apiClient = async (url, options = {}) => {
 
   try {
     const response = await fetch(url, config);
+    const contentType = response.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
     const text = await response.text();
     let payload = null;
     if (text) {
       try {
-        payload = JSON.parse(text);
+        payload = isJson ? JSON.parse(text) : text;
       } catch {
-        payload = null;
+        payload = text;
       }
     }
 
     if (!response.ok) {
-      const contentType = response.headers.get('content-type') || '';
-      const isJson = contentType.includes('application/json');
-      const payload = isJson ? await response.json() : await response.text();
       const backendMessage = typeof payload === 'string'
         ? payload
         : payload?.message || payload?.error || response.statusText;
@@ -120,8 +119,8 @@ const apiClient = async (url, options = {}) => {
       err.payload = payload;
       throw err;
     }
-    
-    return await response.json();
+
+    return payload;
   } catch (error) {
     console.error('API Error:', error);
     throw error;
@@ -324,6 +323,10 @@ export const API = {
     getPaymentByConsultation: (consultationId) => apiClient(`${services.payment}/api/v1/payments/consultation/${consultationId}`),
     // Get payment by Stripe checkout session ID
     getPaymentBySession: (sessionId) => apiClient(`${services.payment}/api/v1/payments/session/${sessionId}`),
+    // Confirm payment status with provider after redirect
+    confirmPaymentSession: (sessionId) => apiClient(`${services.payment}/api/v1/payments/session/${sessionId}/confirm`, {
+      method: 'POST',
+    }),
     // Get all payments for current patient
     getMyPayments: () => apiClient(`${services.payment}/api/v1/payments/patient/my-payments`),
   },
