@@ -316,6 +316,11 @@ export const API = {
   },
 
   patientAppointments: {
+    /** Requires patient JWT; returns appointments for the authenticated user. */
+    list: () =>
+      apiClient(`${services.appointment}/api/patient/appointments`, {
+        method: 'GET',
+      }),
     create: (data) =>
       apiClient(`${services.appointment}/api/patient/appointments`, {
         method: 'POST',
