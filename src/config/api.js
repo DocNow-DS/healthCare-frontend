@@ -338,6 +338,22 @@ export const API = {
       }),
   },
 
+  doctorAppointments: {
+    /** Requires doctor identity header `X-Doctor-Id`. Optionally filter by status. */
+    list: (doctorId, status) => {
+      const q =
+        status != null && String(status).trim().length > 0
+          ? `?status=${encodeURIComponent(String(status).trim())}`
+          : ''
+      return apiClient(`${services.appointment}/api/doctor/appointments${q}`, {
+        method: 'GET',
+        headers: {
+          'X-Doctor-Id': String(doctorId),
+        },
+      })
+    },
+  },
+
   /** Appointment service: doctor directory for booking (optional `specialty` query). */
   patientBooking: {
     listDoctors: (specialty) => {
