@@ -1,56 +1,218 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API } from '../config/api';
-import { CalendarDaysIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  CalendarDaysIcon,
+  ExclamationTriangleIcon,
+  XCircleIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
 
-const readAuthUser = () => {
+const formatWhen = (iso) => {
+  if (!iso) return '—';
   try {
-    const raw = localStorage.getItem('auth_user');
-    return raw ? JSON.parse(raw) : null;
+    return new Date(iso).toLocaleString();
   } catch {
-    return null;
+    return String(iso);
   }
 };
 
-export default function PatientAppointments() {
-  const user = useMemo(() => readAuthUser(), []);
-  const patientId = useMemo(() => user?.id || user?.userId || user?.username || '', [user]);
+function AnimatedProgressBar({ targetPercent, status }) {
+  const target = Number.isFinite(targetPercent) ? Math.max(0, Math.min(100, targetPercent)) : 0;
+  const [percent, setPercent] = useState(target);
+  const rafRef = useRef(null);
 
+  // When target changes, animate smoothly from current percent to target percent.
+  useEffect(() => {
+    const from = percent;
+    const to = target;
+    if (from === to) return;
+
+    const start = performance.now();
+    const durationMs = 700;
+
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      const eased = easeOutCubic(t);
+      const next = Math.round(from + (to - from) * eased);
+      setPercent(next);
+      if (t < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target]);
+
+  const isLive = status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'DECLINED';
+
+  const barColor =
+    percent === 100
+      ? 'bg-emerald-500'
+      : percent >= 70
+        ? 'bg-[#182C61]'
+        : percent >= 45
+          ? 'bg-[#eb2f06]'
+          : 'bg-[#eb2f06]';
+
+  return (
+    <div className="w-full">
+      <div className="h-3.5 rounded-full bg-slate-100 overflow-hidden relative">
+        <div
+          className={`h-full rounded-full transition-[width] duration-500 ease-out ${barColor} ${
+            isLive ? 'animate-pulse' : ''
+          }`}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <div className="mt-2 text-[11px] font-black uppercase tracking-widest text-[#808e9b] flex items-center justify-between">
+        <span>Progress</span>
+        <span>
+          {percent}% {isLive ? '· updating' : ''}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default function PatientAppointments() {
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState('');
   const [appointments, setAppointments] = useState([]);
+  const [expandedId, setExpandedId] = useState(null);
+  const [userPickedId, setUserPickedId] = useState(null);
+  const userPickedIdRef = useRef(userPickedId);
+  const expandedIdRef = useRef(expandedId);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
 
-  const loadAppointments = async () => {
-    if (!patientId) return;
+  useEffect(() => {
+    userPickedIdRef.current = userPickedId;
+  }, [userPickedId]);
+
+  useEffect(() => {
+    expandedIdRef.current = expandedId;
+  }, [expandedId]);
+
+  const loadAppointments = useCallback(async () => {
     setLoading(true);
     setWarning('');
     try {
-      const list = await API.telemedSessions.listForPatient(patientId);
+      const list = await API.patientAppointments.list();
       const normalized = Array.isArray(list) ? list : [];
       normalized.sort((a, b) => {
-        const aTime = new Date(a?.startedAt || a?.createdAt || 0).getTime();
-        const bTime = new Date(b?.startedAt || b?.createdAt || 0).getTime();
+        const aTime = new Date(a?.startTime || a?.createdAt || 0).getTime();
+        const bTime = new Date(b?.startTime || b?.createdAt || 0).getTime();
         return bTime - aTime;
       });
       setAppointments(normalized);
+
+      // If the user has not manually picked an appointment yet, auto-select the
+      // nearest upcoming one (or latest if there is no future appointment).
+      if (!userPickedIdRef.current && normalized.length > 0) {
+        const now = Date.now();
+        const withTimes = normalized
+          .map((a) => ({
+            raw: a,
+            time: new Date(a?.startTime || a?.createdAt || 0).getTime(),
+          }))
+          .filter((x) => Number.isFinite(x.time));
+
+        let candidate = null;
+        if (withTimes.length > 0) {
+          const upcoming = withTimes.filter((x) => x.time >= now);
+          if (upcoming.length > 0) {
+            upcoming.sort((a, b) => a.time - b.time);
+            candidate = upcoming[0].raw;
+          } else {
+            withTimes.sort((a, b) => b.time - a.time);
+            candidate = withTimes[0].raw;
+          }
+        } else {
+          candidate = normalized[0];
+        }
+
+        if (candidate && candidate.id !== expandedIdRef.current) {
+          setExpandedId(candidate.id);
+        }
+      }
     } catch (e) {
-      setWarning(e?.message || 'Unable to load appointments');
+      setWarning(e?.message || 'Unable to load appointments from the appointment service');
       setAppointments([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadAppointments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientId]);
+  }, [loadAppointments]);
+
+  const expandedAppointment = useMemo(
+    () => appointments.find((a) => a.id === expandedId) || null,
+    [appointments, expandedId],
+  );
+
+  const isCancelableStatus = (status) => {
+    const s = String(status || '').toUpperCase();
+    return !['COMPLETED', 'CANCELLED', 'DECLINED'].includes(s);
+  };
+
+  const handleCancelAppointment = async (appointment) => {
+    const appointmentId = appointment?.id;
+    if (!appointmentId) return;
+    if (!isCancelableStatus(appointment?.status)) return;
+
+    const ok = window.confirm('Cancel this appointment?');
+    if (!ok) return;
+
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await API.patientAppointments.cancel(appointmentId);
+      await loadAppointments();
+    } catch (e) {
+      setActionError(e?.message || 'Unable to cancel appointment.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteAppointment = async (appointment) => {
+    const appointmentId = appointment?.id;
+    if (!appointmentId) return;
+
+    const ok = window.confirm('Delete this appointment permanently?');
+    if (!ok) return;
+
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await API.patientAppointments.delete(appointmentId);
+      // Clear selection so the "nearest appointment" auto-pick can re-run.
+      setUserPickedId(null);
+      setExpandedId(null);
+      userPickedIdRef.current = null;
+      expandedIdRef.current = null;
+      await loadAppointments();
+    } catch (e) {
+      setActionError(e?.message || 'Unable to delete appointment.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="max-w-sm">
-          <h1 className="text-3xl font-black text-[#182C61]">Appointments</h1>
-          <p className="text-[#808e9b] mt-1 font-bold">Your backend telemedicine session history</p>
+        <div className="max-w-lg">
+          <h1 className="text-3xl font-black text-[#182C61]">My appointments</h1>
+          <p className="text-[#808e9b] mt-1 font-bold">
+            Booked visits from the appointment service for your signed-in account (JWT).
+          </p>
         </div>
         <button
           type="button"
@@ -61,9 +223,47 @@ export default function PatientAppointments() {
         </button>
       </div>
 
+      {expandedAppointment && (
+        <div className="bg-[#182C61] rounded-3xl border-2 border-[#182C61]/10 shadow-2xl p-6 md:p-8 text-white space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-white/60">Selected appointment</p>
+              <h2 className="text-2xl font-black tracking-tight">
+                {expandedAppointment.consultationType || 'Consultation'} ·{' '}
+                {formatWhen(expandedAppointment.startTime)}
+              </h2>
+              <p className="text-xs font-mono text-white/70">
+                Doctor ID: {expandedAppointment.doctorId || '—'} · ID: {expandedAppointment.id}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-white/80">
+              <CalendarDaysIcon className="h-4 w-4" />
+              {expandedAppointment.status || '—'}
+            </div>
+          </div>
+
+          {expandedAppointment.notes ? (
+            <p className="text-sm text-white/80 border-l-2 border-white/20 pl-3">
+              {expandedAppointment.notes}
+            </p>
+          ) : null}
+
+          <div className="pt-2">
+            <AnimatedProgressBar
+              targetPercent={
+                typeof expandedAppointment.progressPercent === 'number'
+                  ? expandedAppointment.progressPercent
+                  : 0
+              }
+              status={expandedAppointment.status}
+            />
+          </div>
+        </div>
+      )}
+
       {warning ? (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
-          <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5" />
+          <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
           <span className="text-sm font-semibold text-amber-800">{warning}</span>
         </div>
       ) : null}
@@ -72,21 +272,110 @@ export default function PatientAppointments() {
         {loading ? (
           <p className="text-sm font-bold text-[#808e9b]">Loading appointments...</p>
         ) : appointments.length === 0 ? (
-          <p className="text-sm font-bold text-[#808e9b]">No appointments found.</p>
+          <p className="text-sm font-bold text-[#808e9b]">No appointments yet. Book a specialist from the dashboard.</p>
         ) : (
           <div className="space-y-3">
             {appointments.map((a) => (
-              <div key={a.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-black text-[#182C61]">Doctor ID: {a.doctorId || 'N/A'}</p>
-                  <p className="text-xs font-bold text-[#808e9b] mt-1">
-                    {new Date(a.startedAt || a.createdAt || Date.now()).toLocaleString()}
+              <div
+                key={a.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  setUserPickedId(a.id);
+                  setExpandedId(a.id);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    setUserPickedId(a.id);
+                    setExpandedId(a.id);
+                  }
+                }}
+                className={`p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 cursor-pointer transition-colors ${
+                  expandedId === a.id ? 'border-[#182C61]/30 bg-white' : ''
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-[#182C61]">
+                    Doctor ID: <span className="font-mono text-xs">{a.doctorId || '—'}</span>
                   </p>
+                  <p className="text-xs font-bold text-[#808e9b] mt-1">
+                    {a.consultationType ? `${a.consultationType} · ` : ''}
+                    {formatWhen(a.startTime)}
+                    {a.endTime ? ` – ${formatWhen(a.endTime)}` : ''}
+                  </p>
+                  {a.notes ? (
+                    <p className="text-xs text-[#808e9b] mt-1 line-clamp-2">{a.notes}</p>
+                  ) : null}
+                  {a.progressLabel != null && a.progressLabel !== '' ? (
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[#eb2f06] mt-2">
+                      {a.progressLabel}
+                      {typeof a.progressPercent === 'number' ? ` (${a.progressPercent}%)` : ''}
+                    </p>
+                  ) : null}
                 </div>
-                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[#182C61]">
+                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[#182C61] shrink-0">
                   <CalendarDaysIcon className="h-4 w-4" />
-                  {a.status || 'IN_SESSION'}
+                  {a.status || '—'}
                 </div>
+
+                {expandedId === a.id ? (
+                  <div className="w-full mt-3 bg-white border border-slate-100 rounded-xl p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#808e9b]">
+                          Appointment details
+                        </p>
+                        <p className="text-sm font-black text-[#182C61]">
+                          {a.consultationType || 'Consultation'} · {formatWhen(a.startTime)}
+                        </p>
+                        <p className="text-xs font-bold text-[#808e9b]">
+                          Start: {formatWhen(a.startTime)} {a.endTime ? `· End: ${formatWhen(a.endTime)}` : ''}
+                        </p>
+                        {a.notes ? (
+                          <p className="text-xs text-[#808e9b] line-clamp-none">{a.notes}</p>
+                        ) : (
+                          <p className="text-xs text-[#808e9b]">No notes.</p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCancelAppointment(a);
+                          }}
+                          disabled={actionLoading || !isCancelableStatus(a.status)}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border-2 border-emerald-500/20 hover:bg-emerald-500/10 disabled:opacity-50 disabled:hover:bg-white transition-all"
+                          title="Cancel appointment"
+                        >
+                          <XCircleIcon className="h-4 w-4 text-emerald-600" />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Cancel</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteAppointment(a);
+                          }}
+                          disabled={actionLoading}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border-2 border-[#eb2f06]/20 hover:bg-[#eb2f06]/10 disabled:opacity-50 disabled:hover:bg-white transition-all"
+                          title="Delete appointment"
+                        >
+                          <TrashIcon className="h-4 w-4 text-[#eb2f06]" />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-[#eb2f06]">Delete</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {actionError ? (
+                      <div className="mt-3 bg-red-500/10 border border-red-500/30 text-red-100 rounded-xl p-3 text-sm font-semibold">
+                        {actionError}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

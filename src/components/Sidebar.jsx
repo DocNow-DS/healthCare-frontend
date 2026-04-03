@@ -20,7 +20,8 @@ import {
 const navConfigs = {
   Patient: [
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-    { name: 'Specialists', href: '/dashboard/doctors', icon: UserGroupIcon },
+    { name: 'My Appointments', href: '/dashboard/appointments', icon: CalendarIcon },
+    { name: 'Booking', href: '/dashboard/doctors', icon: UserGroupIcon },
     { name: 'AI Checker', href: '/dashboard/ai-checker', icon: BeakerIcon },
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
     { name: 'Bill Requests', href: '/dashboard/payments', icon: CreditCardIcon },
