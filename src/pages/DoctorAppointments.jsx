@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API } from '../config/api';
 import { CalendarDaysIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
@@ -12,6 +13,7 @@ const readAuthUser = () => {
 };
 
 export default function DoctorAppointments() {
+  const navigate = useNavigate();
   const user = useMemo(() => readAuthUser(), []);
   const doctorId = useMemo(() => user?.id || user?.userId || user?.username || '', [user]);
 
@@ -113,6 +115,37 @@ export default function DoctorAppointments() {
     } catch {
       setActionMessage('Could not copy link automatically. Please copy it manually.');
     }
+  };
+
+  const handleCreateCarePlan = (appointment) => {
+    if (!appointment?.patientId) {
+      setActionMessage('Patient details are missing for this appointment.');
+      return;
+    }
+
+    const patientId = String(appointment.patientId);
+    const appointmentId = appointment?.id != null ? String(appointment.id) : '';
+    const params = new URLSearchParams({
+      tab: 'create',
+      patientId,
+    });
+
+    if (appointmentId) {
+      params.set('appointmentId', appointmentId);
+    }
+
+    navigate(`/dashboard/care-plans?${params.toString()}`, {
+      state: {
+        patientDetails: {
+          id: patientId,
+          name: appointment?.patientName || appointment?.patientFullName || appointment?.name || '',
+          email: appointment?.patientEmail || '',
+          phone: appointment?.patientPhone || appointment?.phone || '',
+          age: appointment?.patientAge || '',
+          gender: appointment?.patientGender || '',
+        },
+      },
+    });
   };
 
   return (
@@ -226,6 +259,14 @@ export default function DoctorAppointments() {
                           Copy Link
                         </button>
                       ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() => handleCreateCarePlan(a)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-black border border-[#182C61] text-[#182C61] hover:bg-[#182C61]/5"
+                      >
+                        Create Care Plans
+                      </button>
                     </div>
                   ) : null}
                 </div>

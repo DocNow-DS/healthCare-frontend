@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { API } from '../config/api';
 import { ClipboardDocumentListIcon, PlusIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
@@ -39,11 +39,47 @@ const formatCurrency = (value) => {
   return amount.toFixed(2);
 };
 
+const parseRequestedTab = (tabValue) => {
+  const normalized = String(tabValue || '').trim().toLowerCase();
+  if (normalized === 'history' || normalized === 'medicine-services') {
+    return normalized;
+  }
+  return 'create';
+};
+
+const buildPatientDetailsFromNavigation = (navigationState, fallbackPatientId) => {
+  const source = navigationState?.patientDetails || {};
+  const id =
+    source?.id || source?.patientId || source?.userId || (fallbackPatientId ? String(fallbackPatientId) : '');
+
+  return {
+    id: String(id || ''),
+    name: String(source?.name || source?.fullName || source?.username || ''),
+    email: String(source?.email || ''),
+    phone: String(source?.phone || ''),
+    age: source?.age != null ? String(source.age) : '',
+    gender: String(source?.gender || ''),
+  };
+};
+
+const mapPatientProfile = (profile, fallbackPatientId) => ({
+  id: String(profile?.id || profile?.userId || fallbackPatientId || ''),
+  name: String(profile?.name || profile?.username || ''),
+  email: String(profile?.email || ''),
+  phone: String(profile?.phone || ''),
+  age: profile?.age != null ? String(profile.age) : '',
+  gender: String(profile?.gender || ''),
+});
+
 export default function DoctorCarePlans() {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
+  const initialPatientId = searchParams.get('patientId') || '';
+  const initialAppointmentId = searchParams.get('appointmentId') || '';
+  const initialTab = parseRequestedTab(searchParams.get('tab'));
   const authUser = useMemo(() => readAuthUser(), []);
   const doctorId = useMemo(() => authUser?.id || authUser?.userId || authUser?.username || '', [authUser]);
-  const [activeTab, setActiveTab] = useState('create');
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -89,15 +125,20 @@ export default function DoctorCarePlans() {
     notes: '',
   });
 
-  const [patientId, setPatientId] = useState(searchParams.get('patientId') || '');
-  const [appointmentId, setAppointmentId] = useState(searchParams.get('appointmentId') || '');
+  const [patientId, setPatientId] = useState(initialPatientId);
+  const [appointmentId, setAppointmentId] = useState(initialAppointmentId);
+  const [patientDetails, setPatientDetails] = useState(() =>
+    buildPatientDetailsFromNavigation(location.state, initialPatientId),
+  );
+  const [patientDetailsLoading, setPatientDetailsLoading] = useState(false);
+  const [patientDetailsError, setPatientDetailsError] = useState('');
   const [consultationNotes, setConsultationNotes] = useState('');
   const [allergiesText, setAllergiesText] = useState('');
   const [nextVisitDays, setNextVisitDays] = useState('');
   const [medicines, setMedicines] = useState([emptyMedicine()]);
   const [preVisitServices, setPreVisitServices] = useState([emptyService()]);
 
-  const [historyPatientId, setHistoryPatientId] = useState(searchParams.get('patientId') || '');
+  const [historyPatientId, setHistoryPatientId] = useState(initialPatientId);
   const [consultationSessions, setConsultationSessions] = useState([]);
   const [consultationLoading, setConsultationLoading] = useState(false);
   const [consultationError, setConsultationError] = useState('');
@@ -190,6 +231,76 @@ export default function DoctorCarePlans() {
     loadMedicineCatalog();
     loadServiceCatalog();
   }, []);
+
+  useEffect(() => {
+    setActiveTab(parseRequestedTab(searchParams.get('tab')));
+    setPatientId(searchParams.get('patientId') || '');
+    setAppointmentId(searchParams.get('appointmentId') || '');
+    setHistoryPatientId(searchParams.get('patientId') || '');
+    setPatientDetails(buildPatientDetailsFromNavigation(location.state, searchParams.get('patientId') || ''));
+  }, [location.state, searchParams]);
+
+  useEffect(() => {
+    const normalizedPatientId = String(patientId || '').trim();
+    if (!normalizedPatientId) {
+      setPatientDetails((prev) => ({ ...prev, id: '', name: '', email: '', phone: '', age: '', gender: '' }));
+      setPatientDetailsError('');
+      return;
+    }
+
+    setPatientDetails((prev) => ({ ...prev, id: normalizedPatientId }));
+
+    const hasExistingCoreDetails =
+      String(patientDetails?.name || '').trim() || String(patientDetails?.email || '').trim() || String(patientDetails?.phone || '').trim();
+    if (hasExistingCoreDetails) {
+      return;
+    }
+
+    let cancelled = false;
+    const loadPatientDetails = async () => {
+      setPatientDetailsLoading(true);
+      setPatientDetailsError('');
+      try {
+        const looksNumericPatientId = /^\d+$/.test(normalizedPatientId);
+        let profile = null;
+
+        if (looksNumericPatientId) {
+          profile = await API.patients.getById(normalizedPatientId);
+        } else {
+          const allPatients = await API.patients.getAll();
+          const normalizedLookup = normalizedPatientId.toLowerCase();
+          const safePatients = Array.isArray(allPatients) ? allPatients : [];
+          profile =
+            safePatients.find((item) => {
+              const values = [item?.id, item?.userId, item?.username, item?.email];
+              return values.some((value) => String(value || '').trim().toLowerCase() === normalizedLookup);
+            }) || null;
+        }
+
+        if (cancelled) return;
+        if (profile) {
+          setPatientDetails(mapPatientProfile(profile, normalizedPatientId));
+          setPatientDetailsError('');
+        } else {
+          setPatientDetails((prev) => ({ ...prev, id: normalizedPatientId }));
+          setPatientDetailsError('Patient profile not found for auto-fill. You can still create the care plan using Patient ID.');
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setPatientDetails((prev) => ({ ...prev, id: normalizedPatientId }));
+        setPatientDetailsError(e?.payload?.message || e?.message || 'Unable to load patient details');
+      } finally {
+        if (!cancelled) {
+          setPatientDetailsLoading(false);
+        }
+      }
+    };
+
+    loadPatientDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId, patientDetails?.email, patientDetails?.name, patientDetails?.phone]);
 
   const medicineCatalogByName = useMemo(() => {
     const map = new Map();
@@ -910,6 +1021,50 @@ export default function DoctorCarePlans() {
           ))}
         </datalist>
         <form onSubmit={handleCreate} className="space-y-5">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+            <h3 className="text-sm font-black text-[#182C61] uppercase tracking-wider mb-2">Patient Details</h3>
+            {patientDetailsError ? (
+              <p className="text-xs font-bold text-amber-700 mb-2">{patientDetailsError}</p>
+            ) : null}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+                placeholder="Patient name"
+                value={patientDetails.name || ''}
+                readOnly
+              />
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+                placeholder="Patient email"
+                value={patientDetails.email || ''}
+                readOnly
+              />
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+                placeholder="Patient phone"
+                value={patientDetails.phone || ''}
+                readOnly
+              />
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+                placeholder="Patient age"
+                value={patientDetails.age || ''}
+                readOnly
+              />
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+                placeholder="Patient gender"
+                value={patientDetails.gender || ''}
+                readOnly
+              />
+              <div className="flex items-center px-3 py-2 rounded-lg border border-slate-200 bg-white">
+                <span className="text-xs font-bold text-[#808e9b]">
+                  {patientDetailsLoading ? 'Loading details...' : 'Details auto-filled from selected appointment'}
+                </span>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input
               className="w-full px-4 py-2.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:border-[#182C61]"
