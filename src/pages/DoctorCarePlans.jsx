@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { API } from '../config/api';
 import { ClipboardDocumentListIcon, PlusIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
@@ -41,16 +41,24 @@ const formatCurrency = (value) => {
 
 const parseRequestedTab = (tabValue) => {
   const normalized = String(tabValue || '').trim().toLowerCase();
-  if (normalized === 'history' || normalized === 'medicine-services') {
+  if (normalized === 'history') {
     return normalized;
   }
   return 'create';
 };
 
+const getPlanTimelineText = (plan) => {
+  const appointmentDate = plan?.appointmentDate || plan?.appointmentAt || plan?.appointmentTime || plan?.createdAt;
+  if (!appointmentDate) return 'No appointment time';
+  const parsed = new Date(appointmentDate);
+  if (Number.isNaN(parsed.getTime())) return String(appointmentDate);
+  return parsed.toLocaleString();
+};
+
 const buildPatientDetailsFromNavigation = (navigationState, fallbackPatientId) => {
   const source = navigationState?.patientDetails || {};
   const id =
-    source?.id || source?.patientId || source?.userId || (fallbackPatientId ? String(fallbackPatientId) : '');
+    source?._id || source?.id || source?.patientId || source?.userId || (fallbackPatientId ? String(fallbackPatientId) : '');
 
   return {
     id: String(id || ''),
@@ -63,7 +71,7 @@ const buildPatientDetailsFromNavigation = (navigationState, fallbackPatientId) =
 };
 
 const mapPatientProfile = (profile, fallbackPatientId) => ({
-  id: String(profile?.id || profile?.userId || fallbackPatientId || ''),
+  id: String(profile?._id || profile?.id || profile?.userId || fallbackPatientId || ''),
   name: String(profile?.name || profile?.username || ''),
   email: String(profile?.email || ''),
   phone: String(profile?.phone || ''),
@@ -71,10 +79,15 @@ const mapPatientProfile = (profile, fallbackPatientId) => ({
   gender: String(profile?.gender || ''),
 });
 
+const resolveCanonicalPatientId = (profile, fallbackPatientId) =>
+  String(profile?._id || profile?.id || profile?.userId || fallbackPatientId || '').trim();
+
 export default function DoctorCarePlans() {
+  const navigate = useNavigate();
   const location = useLocation();
+  const { patientId: routePatientId } = useParams();
   const [searchParams] = useSearchParams();
-  const initialPatientId = searchParams.get('patientId') || '';
+  const initialPatientId = routePatientId || searchParams.get('patientId') || '';
   const initialAppointmentId = searchParams.get('appointmentId') || '';
   const initialTab = parseRequestedTab(searchParams.get('tab'));
   const authUser = useMemo(() => readAuthUser(), []);
@@ -139,6 +152,7 @@ export default function DoctorCarePlans() {
   const [preVisitServices, setPreVisitServices] = useState([emptyService()]);
 
   const [historyPatientId, setHistoryPatientId] = useState(initialPatientId);
+  const [expandedPlanId, setExpandedPlanId] = useState('');
   const [consultationSessions, setConsultationSessions] = useState([]);
   const [consultationLoading, setConsultationLoading] = useState(false);
   const [consultationError, setConsultationError] = useState('');
@@ -234,11 +248,12 @@ export default function DoctorCarePlans() {
 
   useEffect(() => {
     setActiveTab(parseRequestedTab(searchParams.get('tab')));
-    setPatientId(searchParams.get('patientId') || '');
+    const resolvedPatientId = routePatientId || searchParams.get('patientId') || '';
+    setPatientId(resolvedPatientId);
     setAppointmentId(searchParams.get('appointmentId') || '');
-    setHistoryPatientId(searchParams.get('patientId') || '');
-    setPatientDetails(buildPatientDetailsFromNavigation(location.state, searchParams.get('patientId') || ''));
-  }, [location.state, searchParams]);
+    setHistoryPatientId(resolvedPatientId);
+    setPatientDetails(buildPatientDetailsFromNavigation(location.state, resolvedPatientId));
+  }, [location.state, routePatientId, searchParams]);
 
   useEffect(() => {
     const normalizedPatientId = String(patientId || '').trim();
@@ -272,14 +287,19 @@ export default function DoctorCarePlans() {
           const safePatients = Array.isArray(allPatients) ? allPatients : [];
           profile =
             safePatients.find((item) => {
-              const values = [item?.id, item?.userId, item?.username, item?.email];
+              const values = [item?._id, item?.id, item?.userId, item?.username, item?.email];
               return values.some((value) => String(value || '').trim().toLowerCase() === normalizedLookup);
             }) || null;
         }
 
         if (cancelled) return;
         if (profile) {
-          setPatientDetails(mapPatientProfile(profile, normalizedPatientId));
+          const canonicalPatientId = resolveCanonicalPatientId(profile, normalizedPatientId);
+          setPatientDetails(mapPatientProfile(profile, canonicalPatientId));
+          if (canonicalPatientId && canonicalPatientId !== normalizedPatientId) {
+            setPatientId(canonicalPatientId);
+            setHistoryPatientId(canonicalPatientId);
+          }
           setPatientDetailsError('');
         } else {
           setPatientDetails((prev) => ({ ...prev, id: normalizedPatientId }));
@@ -573,9 +593,6 @@ export default function DoctorCarePlans() {
     try {
       await API.carePlans.create(payload);
       setSuccess('Care plan created successfully.');
-      if (!historyPatientId) {
-        setHistoryPatientId(patientId.trim());
-      }
       resetForm();
       await loadPlans();
     } catch (e2) {
@@ -597,15 +614,28 @@ export default function DoctorCarePlans() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-black text-[#182C61]">Patient Care Plans</h1>
-          <p className="text-[#808e9b] mt-1 font-bold">Create post-appointment care plans and track your plan history</p>
+          <p className="text-[#808e9b] mt-1 font-bold">
+            {patientDetails?.name
+              ? `${patientDetails.name} (${patientId || 'N/A'})`
+              : `Patient ID: ${patientId || 'N/A'}`}
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={loadPlans}
-          className="px-4 py-2 bg-[#182C61] text-white rounded-xl font-black text-sm hover:bg-[#182C61]/85"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard/patients')}
+            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl font-black text-sm hover:bg-slate-50"
+          >
+            Back to Patients
+          </button>
+          <button
+            type="button"
+            onClick={loadPlans}
+            className="px-4 py-2 bg-[#182C61] text-white rounded-xl font-black text-sm hover:bg-[#182C61]/85"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -622,7 +652,7 @@ export default function DoctorCarePlans() {
       ) : null}
 
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-2">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => setActiveTab('create')}
@@ -639,16 +669,7 @@ export default function DoctorCarePlans() {
               activeTab === 'history' ? 'bg-[#182C61] text-white' : 'bg-slate-50 text-[#182C61] hover:bg-slate-100'
             }`}
           >
-            Maintain History
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('medicine-services')}
-            className={`px-4 py-2.5 rounded-xl text-sm font-black transition ${
-              activeTab === 'medicine-services' ? 'bg-[#182C61] text-white' : 'bg-slate-50 text-[#182C61] hover:bg-slate-100'
-            }`}
-          >
-            Medicine &amp; Services
+            History
           </button>
         </div>
       </div>
@@ -1070,7 +1091,7 @@ export default function DoctorCarePlans() {
               className="w-full px-4 py-2.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:border-[#182C61]"
               placeholder="Patient ID"
               value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
+              readOnly
               required
             />
             <input
@@ -1311,13 +1332,8 @@ export default function DoctorCarePlans() {
       {activeTab === 'history' ? (
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-5">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-          <h2 className="text-lg font-black text-[#182C61]">Maintain History</h2>
-          <input
-            className="px-4 py-2.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:border-[#182C61] max-w-sm"
-            placeholder="Filter by patient ID"
-            value={historyPatientId}
-            onChange={(e) => setHistoryPatientId(e.target.value)}
-          />
+          <h2 className="text-lg font-black text-[#182C61]">Appointment History</h2>
+          <p className="text-sm font-bold text-[#808e9b]">Click an appointment card to view medicines and services</p>
         </div>
 
         <div className="rounded-2xl border border-slate-100 p-4">
@@ -1330,19 +1346,69 @@ export default function DoctorCarePlans() {
             <div className="space-y-3">
               {plans.map((plan) => (
                 <div key={plan.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <ClipboardDocumentListIcon className="h-5 w-5 text-[#182C61]" />
-                      <p className="text-sm font-black text-[#182C61]">Patient: {plan.patientId || 'N/A'}</p>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedPlanId((prev) => (prev === String(plan.id) ? '' : String(plan.id)))}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <ClipboardDocumentListIcon className="h-5 w-5 text-[#182C61]" />
+                        <p className="text-sm font-black text-[#182C61]">Appointment: {plan.appointmentId || 'N/A'}</p>
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
+                        {plan.status || 'ACTIVE'}
+                      </span>
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
-                      {plan.status || 'ACTIVE'}
-                    </span>
-                  </div>
-                  <p className="text-xs font-bold text-[#808e9b] mt-2">Appointment: {plan.appointmentId || 'N/A'}</p>
-                  <p className="text-xs font-bold text-[#808e9b] mt-1">Created: {formatDate(plan.createdAt)}</p>
-                  <p className="text-xs font-black text-[#182C61] mt-1">Total Bill: LKR {formatCurrency(plan.totalBill)}</p>
-                  <p className="text-xs font-bold text-[#1e272e] mt-2 whitespace-pre-wrap">{plan.consultationNotes || 'No notes'}</p>
+                    <p className="text-xs font-bold text-[#808e9b] mt-2">Date &amp; Time: {getPlanTimelineText(plan)}</p>
+                    <p className="text-xs font-black text-[#182C61] mt-1">Total Bill: LKR {formatCurrency(plan.totalBill)}</p>
+                  </button>
+
+                  {expandedPlanId === String(plan.id) ? (
+                    <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
+                      <p className="text-xs font-bold text-[#1e272e] whitespace-pre-wrap">{plan.consultationNotes || 'No notes'}</p>
+
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-[#182C61] mb-2">
+                          Medicines ({Array.isArray(plan.medicines) ? plan.medicines.length : 0})
+                        </h4>
+                        {!Array.isArray(plan.medicines) || plan.medicines.length === 0 ? (
+                          <p className="text-xs font-bold text-[#808e9b]">No medicines for this appointment.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {plan.medicines.map((medicine, index) => (
+                              <div key={`${plan.id}-med-${index}`} className="p-2 rounded-lg bg-white border border-slate-200">
+                                <p className="text-sm font-black text-[#182C61]">{medicine.medicineName || 'Medicine'}</p>
+                                <p className="text-xs font-bold text-[#808e9b] mt-1">
+                                  {medicine.dosage || 'N/A'} | {medicine.frequency || 'N/A'} | {medicine.durationDays || 'N/A'} days
+                                </p>
+                                <p className="text-xs font-semibold text-[#1e272e] mt-1">{medicine.instructions || 'No instructions'}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-[#182C61] mb-2">
+                          Pre-Visit Services ({Array.isArray(plan.preVisitServices) ? plan.preVisitServices.length : 0})
+                        </h4>
+                        {!Array.isArray(plan.preVisitServices) || plan.preVisitServices.length === 0 ? (
+                          <p className="text-xs font-bold text-[#808e9b]">No pre-visit services for this appointment.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {plan.preVisitServices.map((service, index) => (
+                              <div key={`${plan.id}-service-${index}`} className="p-2 rounded-lg bg-white border border-slate-200">
+                                <p className="text-sm font-black text-[#182C61]">{service.serviceName || 'Service'}</p>
+                                <p className="text-xs font-bold text-[#808e9b] mt-1">LKR {formatCurrency(service.price)}</p>
+                                <p className="text-xs font-semibold text-[#1e272e] mt-1">{service.notes || 'No notes'}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

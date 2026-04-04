@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API } from '../config/api';
 import {
   ExclamationTriangleIcon,
@@ -17,6 +18,7 @@ const readAuthUser = () => {
 };
 
 export default function DoctorPatients() {
+  const navigate = useNavigate();
   const user = useMemo(() => readAuthUser(), []);
   const doctorId = useMemo(() => user?.id || user?.userId || user?.username || '', [user]);
 
@@ -35,7 +37,7 @@ export default function DoctorPatients() {
 
       const patientMap = new Map();
       (Array.isArray(allPatients) ? allPatients : []).forEach((patient) => {
-        [patient?.id, patient?.userId, patient?.username, patient?.email]
+        [patient?._id, patient?.id, patient?.userId, patient?.username, patient?.email]
           .map((value) => String(value || '').trim())
           .filter(Boolean)
           .forEach((key) => patientMap.set(key, patient));
@@ -57,6 +59,26 @@ export default function DoctorPatients() {
     loadPatients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorId]);
+
+  const resolvePatientId = (patient) =>
+    String(patient?._id || patient?.id || patient?.userId || patient?.username || patient?.email || '').trim();
+
+  const openPatientCarePlans = (patient) => {
+    const patientId = resolvePatientId(patient);
+    if (!patientId) return;
+    navigate(`/dashboard/patients/${encodeURIComponent(patientId)}/care-plans?tab=history`, {
+      state: {
+        patientDetails: {
+          id: patientId,
+          name: patient?.name || patient?.username || '',
+          email: patient?.email || '',
+          phone: patient?.phone || '',
+          age: patient?.age || '',
+          gender: patient?.gender || '',
+        },
+      },
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -99,12 +121,16 @@ export default function DoctorPatients() {
               </thead>
               <tbody>
                 {patients.map((patient, index) => (
-                  <tr key={patient.id || patient.userId || `${patient.username || 'patient'}-${index}`} className="border-b border-slate-100 hover:bg-slate-50/60">
+                  <tr
+                    key={patient.id || patient.userId || `${patient.username || 'patient'}-${index}`}
+                    className="border-b border-slate-100 hover:bg-slate-50/60 cursor-pointer"
+                    onClick={() => openPatientCarePlans(patient)}
+                  >
                     <td className="py-3 px-3 font-bold text-[#1e272e]">{patient.name || patient.username || 'N/A'}</td>
                     <td className="py-3 px-3 font-semibold text-[#485460]">{patient.gender || 'N/A'}</td>
                     <td className="py-3 px-3 font-semibold text-[#485460]">{patient.age || 'N/A'}</td>
                     <td className="py-3 px-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           title="Add"

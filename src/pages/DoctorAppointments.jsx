@@ -134,7 +134,7 @@ export default function DoctorAppointments() {
       params.set('appointmentId', appointmentId);
     }
 
-    navigate(`/dashboard/care-plans?${params.toString()}`, {
+    navigate(`/dashboard/patients/${encodeURIComponent(patientId)}/care-plans?${params.toString()}`, {
       state: {
         patientDetails: {
           id: patientId,
