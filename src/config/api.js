@@ -143,10 +143,6 @@ const apiClient = async (url, options = {}) => {
       throw err;
     }
 
-    
-    return await response.json();
-
-
     // Dev debug: log successful responses
     if (import.meta?.env?.DEV) {
       // eslint-disable-next-line no-console
@@ -161,7 +157,9 @@ const apiClient = async (url, options = {}) => {
       error?.name === 'TypeError' ||
       /NetworkError|Failed to fetch|fetch resource/i.test(message)
     ) {
-      const networkErr = new Error(`Network error calling ${url}. The backend service may be down or blocked by CORS.`);
+      const networkErr = new Error('Network error. A backend service is unavailable or blocked by CORS.');
+      networkErr.isNetworkError = true;
+      networkErr.requestUrl = url;
       networkErr.cause = error;
       console.error('API Error:', networkErr);
       throw networkErr;
@@ -391,28 +389,40 @@ export const API = {
   patientAppointments: {
     /** Requires patient JWT; returns appointments for the authenticated user. */
     list: async () => {
+      let primaryError;
       try {
         return await apiClient(`${services.appointment}/api/patient/appointments`, {
           method: 'GET',
         });
       } catch (error) {
+        primaryError = error;
         const patientId = getCurrentPatientId();
         if (!patientId) throw error;
 
-        // Fallback: derive appointment-like rows from telemed sessions when appointment service is unavailable.
-        const sessions = await telemedSessionsClient(`/patient/${encodeURIComponent(patientId)}/sessions`);
-        const safeSessions = Array.isArray(sessions) ? sessions : [];
-        return safeSessions.map((s) => ({
-          id: s?.id || s?.consultationId || s?.appointmentId,
-          doctorId: s?.doctorId || '',
-          startTime: s?.startedAt || s?.createdAt || null,
-          endTime: s?.endedAt || null,
-          consultationType: s?.type || 'ONLINE',
-          status: String(s?.status || 'SCHEDULED').toUpperCase(),
-          notes: s?.notes || '',
-          progressPercent: typeof s?.progressPercent === 'number' ? s.progressPercent : 0,
-          progressLabel: s?.progressLabel || '',
-        }));
+        try {
+          // Fallback: derive appointment-like rows from telemed sessions when appointment service is unavailable.
+          const sessions = await telemedSessionsClient(`/patient/${encodeURIComponent(patientId)}/sessions`);
+          const safeSessions = Array.isArray(sessions) ? sessions : [];
+          return safeSessions.map((s) => ({
+            id: s?.id || s?.consultationId || s?.appointmentId,
+            doctorId: s?.doctorId || '',
+            startTime: s?.startedAt || s?.createdAt || null,
+            endTime: s?.endedAt || null,
+            consultationType: s?.type || 'ONLINE',
+            status: String(s?.status || 'SCHEDULED').toUpperCase(),
+            notes: s?.notes || '',
+            progressPercent: typeof s?.progressPercent === 'number' ? s.progressPercent : 0,
+            progressLabel: s?.progressLabel || '',
+          }));
+        } catch (fallbackError) {
+          const unavailable = new Error(
+            'Appointments are temporarily unavailable. Please ensure the Appointment and Telemedicine services are running, then try again.'
+          );
+          unavailable.primaryError = primaryError;
+          unavailable.fallbackError = fallbackError;
+          unavailable.isServiceUnavailable = true;
+          throw unavailable;
+        }
       }
     },
     cancel: (appointmentId) =>
