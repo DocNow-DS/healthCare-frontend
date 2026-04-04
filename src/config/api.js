@@ -88,16 +88,7 @@ const apiClient = async (url, options = {}) => {
 
   try {
     const response = await fetch(url, config);
-    const text = await response.text();
-    let payload = null;
-    if (text) {
-      try {
-        payload = JSON.parse(text);
-      } catch {
-        payload = null;
-      }
-    }
-
+    
     if (!response.ok) {
       const contentType = response.headers.get('content-type') || '';
       const isJson = contentType.includes('application/json');
@@ -107,6 +98,7 @@ const apiClient = async (url, options = {}) => {
         : payload?.message || payload?.error || response.statusText;
 
       if (response.status === 401) {
+        // Token expired or invalid, clear storage and redirect to login
         clearAuthData();
         window.location.href = '/login';
         throw new Error('Authentication required');
@@ -116,8 +108,8 @@ const apiClient = async (url, options = {}) => {
       err.payload = payload;
       throw err;
     }
-
-    return payload
+    
+    return await response.json();
   } catch (error) {
     console.error('API Error:', error);
     throw error;
@@ -159,10 +151,7 @@ export const API = {
     getAll: () => apiClient(`${services.doctor}/api/doctors`),
     getById: (id) => apiClient(`${services.doctor}/api/doctors/${id}`),
     getByEmail: (email) => apiClient(`${services.doctor}/api/doctors/email/${email}`),
-    getBySpecialization: (specialization) =>
-      apiClient(
-        `${services.doctor}/api/doctors/specialization/${encodeURIComponent(specialization)}`,
-      ),
+    getBySpecialization: (specialization) => apiClient(`${services.doctor}/api/doctors/specialization/${specialization}`),
     update: (id, data) => apiClient(`${services.doctor}/api/doctors/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -189,7 +178,6 @@ export const API = {
       body: JSON.stringify(payload),
     }),
     getByDoctor: (doctorId) => apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}`),
-    getByPatient: (patientId) => apiClient(`${services.doctor}/api/care-plans/patient/${patientId}`),
     getByDoctorAndPatient: (doctorId, patientId) =>
       apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}/patient/${patientId}`),
   },
@@ -325,57 +313,6 @@ export const API = {
     getPaymentBySession: (sessionId) => apiClient(`${services.payment}/api/v1/payments/session/${sessionId}`),
     // Get all payments for current patient
     getMyPayments: () => apiClient(`${services.payment}/api/v1/payments/patient/my-payments`),
-  },
-
-  patientAppointments: {
-    /** Requires patient JWT; returns appointments for the authenticated user. */
-    list: () =>
-      apiClient(`${services.appointment}/api/patient/appointments`, {
-        method: 'GET',
-      }),
-    cancel: (appointmentId) =>
-      apiClient(
-        `${services.appointment}/api/patient/appointments/${encodeURIComponent(String(appointmentId))}/cancel`,
-        { method: 'PATCH' },
-      ),
-    delete: (appointmentId) =>
-      apiClient(
-        `${services.appointment}/api/patient/appointments/${encodeURIComponent(String(appointmentId))}`,
-        { method: 'DELETE' },
-      ),
-    create: (data) =>
-      apiClient(`${services.appointment}/api/patient/appointments`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-  },
-
-  doctorAppointments: {
-    /** Requires doctor identity header `X-Doctor-Id`. Optionally filter by status. */
-    list: (doctorId, status) => {
-      const q =
-        status != null && String(status).trim().length > 0
-          ? `?status=${encodeURIComponent(String(status).trim())}`
-          : ''
-      return apiClient(`${services.appointment}/api/doctor/appointments${q}`, {
-        method: 'GET',
-        headers: {
-          'X-Doctor-Id': String(doctorId),
-        },
-      })
-    },
-  },
-
-  /** Appointment service: doctor directory for booking (optional `specialty` query). */
-  patientBooking: {
-    listDoctors: (specialty) => {
-      const base = `${services.appointment}/api/patient/booking/doctors`
-      const q =
-        typeof specialty === 'string' && specialty.trim().length > 0
-          ? `?specialty=${encodeURIComponent(specialty.trim())}`
-          : ''
-      return apiClient(`${base}${q}`, { method: 'GET' })
-    },
   },
 
 };
