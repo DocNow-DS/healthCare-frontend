@@ -22,7 +22,7 @@ export default function Signup({ onSignup }) {
         email,
         password,
         role: normalizedRole,
-        roles: [normalizedRole],
+        roles: normalizedRole,
       });
 
       const token = result?.token;
