@@ -31,6 +31,7 @@ const navConfigs = {
     { name: 'Schedule', href: '/dashboard', icon: HomeIcon },
     { name: 'Appointments', href: '/dashboard/appointments', icon: CalendarIcon },
     { name: 'Patients', href: '/dashboard/patients', icon: UserGroupIcon },
+    { name: 'Medicines & Services', href: '/dashboard/medicine-services', icon: BeakerIcon },
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
     { name: 'Bill Requests', href: '/dashboard/bill-requests', icon: CreditCardIcon },
     { name: 'Profile', href: '/dashboard/profile', icon: UserCircleIcon },

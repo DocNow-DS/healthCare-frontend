@@ -4,7 +4,6 @@ import { API } from '../config/api';
 import {
   ExclamationTriangleIcon,
   PlusIcon,
-  TrashIcon,
   DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 
@@ -63,10 +62,10 @@ export default function DoctorPatients() {
   const resolvePatientId = (patient) =>
     String(patient?._id || patient?.id || patient?.userId || patient?.username || patient?.email || '').trim();
 
-  const openPatientCarePlans = (patient) => {
+  const openPatientCarePlans = (patient, tab = 'history') => {
     const patientId = resolvePatientId(patient);
     if (!patientId) return;
-    navigate(`/dashboard/patients/${encodeURIComponent(patientId)}/care-plans?tab=history`, {
+    navigate(`/dashboard/patients/${encodeURIComponent(patientId)}/care-plans?tab=${encodeURIComponent(tab)}`, {
       state: {
         patientDetails: {
           id: patientId,
@@ -116,6 +115,7 @@ export default function DoctorPatients() {
                   <th className="text-left py-3 px-3 font-black text-[#182C61] uppercase tracking-wider text-xs">Patient Name</th>
                   <th className="text-left py-3 px-3 font-black text-[#182C61] uppercase tracking-wider text-xs">Gender</th>
                   <th className="text-left py-3 px-3 font-black text-[#182C61] uppercase tracking-wider text-xs">Age</th>
+                  <th className="text-left py-3 px-3 font-black text-[#182C61] uppercase tracking-wider text-xs">Phone Number</th>
                   <th className="text-left py-3 px-3 font-black text-[#182C61] uppercase tracking-wider text-xs">Actions</th>
                 </tr>
               </thead>
@@ -129,23 +129,17 @@ export default function DoctorPatients() {
                     <td className="py-3 px-3 font-bold text-[#1e272e]">{patient.name || patient.username || 'N/A'}</td>
                     <td className="py-3 px-3 font-semibold text-[#485460]">{patient.gender || 'N/A'}</td>
                     <td className="py-3 px-3 font-semibold text-[#485460]">{patient.age || 'N/A'}</td>
+                    <td className="py-3 px-3 font-semibold text-[#485460]">{patient.phone || 'N/A'}</td>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           title="Add"
                           aria-label="Add"
+                          onClick={() => openPatientCarePlans(patient, 'create')}
                           className="p-2 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                         >
                           <PlusIcon className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          title="Delete"
-                          aria-label="Delete"
-                          className="p-2 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50"
-                        >
-                          <TrashIcon className="h-4 w-4" />
                         </button>
                         <button
                           type="button"

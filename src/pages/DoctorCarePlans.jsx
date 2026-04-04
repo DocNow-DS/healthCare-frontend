@@ -41,7 +41,7 @@ const formatCurrency = (value) => {
 
 const parseRequestedTab = (tabValue) => {
   const normalized = String(tabValue || '').trim().toLowerCase();
-  if (normalized === 'history') {
+  if (normalized === 'history' || normalized === 'medicine-services') {
     return normalized;
   }
   return 'create';
@@ -82,14 +82,14 @@ const mapPatientProfile = (profile, fallbackPatientId) => ({
 const resolveCanonicalPatientId = (profile, fallbackPatientId) =>
   String(profile?._id || profile?.id || profile?.userId || fallbackPatientId || '').trim();
 
-export default function DoctorCarePlans() {
+export default function DoctorCarePlans({ onlyCatalog = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { patientId: routePatientId } = useParams();
   const [searchParams] = useSearchParams();
   const initialPatientId = routePatientId || searchParams.get('patientId') || '';
   const initialAppointmentId = searchParams.get('appointmentId') || '';
-  const initialTab = parseRequestedTab(searchParams.get('tab'));
+  const initialTab = onlyCatalog ? 'medicine-services' : parseRequestedTab(searchParams.get('tab'));
   const authUser = useMemo(() => readAuthUser(), []);
   const doctorId = useMemo(() => authUser?.id || authUser?.userId || authUser?.username || '', [authUser]);
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -232,14 +232,20 @@ export default function DoctorCarePlans() {
   };
 
   useEffect(() => {
+    if (onlyCatalog) {
+      return;
+    }
     loadPlans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doctorId, historyPatientId]);
+  }, [doctorId, historyPatientId, onlyCatalog]);
 
   useEffect(() => {
+    if (onlyCatalog) {
+      return;
+    }
     loadConsultationSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doctorId, historyPatientId]);
+  }, [doctorId, historyPatientId, onlyCatalog]);
 
   useEffect(() => {
     loadMedicineCatalog();
@@ -247,15 +253,18 @@ export default function DoctorCarePlans() {
   }, []);
 
   useEffect(() => {
-    setActiveTab(parseRequestedTab(searchParams.get('tab')));
+    setActiveTab(onlyCatalog ? 'medicine-services' : parseRequestedTab(searchParams.get('tab')));
     const resolvedPatientId = routePatientId || searchParams.get('patientId') || '';
     setPatientId(resolvedPatientId);
     setAppointmentId(searchParams.get('appointmentId') || '');
     setHistoryPatientId(resolvedPatientId);
     setPatientDetails(buildPatientDetailsFromNavigation(location.state, resolvedPatientId));
-  }, [location.state, routePatientId, searchParams]);
+  }, [location.state, routePatientId, searchParams, onlyCatalog]);
 
   useEffect(() => {
+    if (onlyCatalog) {
+      return;
+    }
     const normalizedPatientId = String(patientId || '').trim();
     if (!normalizedPatientId) {
       setPatientDetails((prev) => ({ ...prev, id: '', name: '', email: '', phone: '', age: '', gender: '' }));
@@ -320,7 +329,7 @@ export default function DoctorCarePlans() {
     return () => {
       cancelled = true;
     };
-  }, [patientId, patientDetails?.email, patientDetails?.name, patientDetails?.phone]);
+  }, [patientId, patientDetails?.email, patientDetails?.name, patientDetails?.phone, onlyCatalog]);
 
   const medicineCatalogByName = useMemo(() => {
     const map = new Map();
@@ -613,24 +622,28 @@ export default function DoctorCarePlans() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-[#182C61]">Patient Care Plans</h1>
+          <h1 className="text-3xl font-black text-[#182C61]">{onlyCatalog ? 'Medicines & Services' : 'Patient Care Plans'}</h1>
           <p className="text-[#808e9b] mt-1 font-bold">
-            {patientDetails?.name
+            {onlyCatalog
+              ? 'Manage medicine catalog and pre-visit service catalog'
+              : patientDetails?.name
               ? `${patientDetails.name} (${patientId || 'N/A'})`
               : `Patient ID: ${patientId || 'N/A'}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {!onlyCatalog ? (
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard/patients')}
+              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl font-black text-sm hover:bg-slate-50"
+            >
+              Back to Patients
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={() => navigate('/dashboard/patients')}
-            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl font-black text-sm hover:bg-slate-50"
-          >
-            Back to Patients
-          </button>
-          <button
-            type="button"
-            onClick={loadPlans}
+            onClick={onlyCatalog ? () => { loadMedicineCatalog(); loadServiceCatalog(); } : loadPlans}
             className="px-4 py-2 bg-[#182C61] text-white rounded-xl font-black text-sm hover:bg-[#182C61]/85"
           >
             Refresh
@@ -651,6 +664,47 @@ export default function DoctorCarePlans() {
         </div>
       ) : null}
 
+      {!onlyCatalog ? (
+      <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+        <h3 className="text-sm font-black text-[#182C61] uppercase tracking-wider mb-2">Patient Details</h3>
+        {patientDetailsError ? (
+          <p className="text-xs font-bold text-amber-700 mb-2">{patientDetailsError}</p>
+        ) : null}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+          <input
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+            placeholder="Patient name"
+            value={patientDetails.name || ''}
+            readOnly
+          />
+          <input
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+            placeholder="Patient phone"
+            value={patientDetails.phone || ''}
+            readOnly
+          />
+          <input
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+            placeholder="Patient age"
+            value={patientDetails.age || ''}
+            readOnly
+          />
+          <input
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+            placeholder="Patient gender"
+            value={patientDetails.gender || ''}
+            readOnly
+          />
+          <div className="flex items-center px-3 py-2 rounded-lg border border-slate-200 bg-white">
+            <span className="text-xs font-bold text-[#808e9b]">
+              {patientDetailsLoading ? 'Loading details...' : 'Details auto-filled for selected patient'}
+            </span>
+          </div>
+        </div>
+      </div>
+      ) : null}
+
+      {!onlyCatalog ? (
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-2">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
@@ -673,6 +727,7 @@ export default function DoctorCarePlans() {
           </button>
         </div>
       </div>
+      ) : null}
 
       {activeTab === 'medicine-services' ? (
       <>
@@ -1042,64 +1097,7 @@ export default function DoctorCarePlans() {
           ))}
         </datalist>
         <form onSubmit={handleCreate} className="space-y-5">
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <h3 className="text-sm font-black text-[#182C61] uppercase tracking-wider mb-2">Patient Details</h3>
-            {patientDetailsError ? (
-              <p className="text-xs font-bold text-amber-700 mb-2">{patientDetailsError}</p>
-            ) : null}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <input
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
-                placeholder="Patient name"
-                value={patientDetails.name || ''}
-                readOnly
-              />
-              <input
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
-                placeholder="Patient email"
-                value={patientDetails.email || ''}
-                readOnly
-              />
-              <input
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
-                placeholder="Patient phone"
-                value={patientDetails.phone || ''}
-                readOnly
-              />
-              <input
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
-                placeholder="Patient age"
-                value={patientDetails.age || ''}
-                readOnly
-              />
-              <input
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
-                placeholder="Patient gender"
-                value={patientDetails.gender || ''}
-                readOnly
-              />
-              <div className="flex items-center px-3 py-2 rounded-lg border border-slate-200 bg-white">
-                <span className="text-xs font-bold text-[#808e9b]">
-                  {patientDetailsLoading ? 'Loading details...' : 'Details auto-filled from selected appointment'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <input
-              className="w-full px-4 py-2.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:border-[#182C61]"
-              placeholder="Patient ID"
-              value={patientId}
-              readOnly
-              required
-            />
-            <input
-              className="w-full px-4 py-2.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:border-[#182C61]"
-              placeholder="Appointment ID (optional)"
-              value={appointmentId}
-              onChange={(e) => setAppointmentId(e.target.value)}
-            />
+          <div className="grid grid-cols-1 gap-3">
             <input
               type="number"
               min="1"
