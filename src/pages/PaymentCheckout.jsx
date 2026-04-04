@@ -48,8 +48,15 @@ export default function PaymentCheckout() {
     setLoading(true);
 
     try {
-      const successUrl = `${window.location.origin}/payment/success`;
-      const cancelUrl = `${window.location.origin}/payment/cancel`;
+      const successParams = new URLSearchParams({
+        session_id: '{CHECKOUT_SESSION_ID}',
+        consultationId: String(formData.consultationId || ''),
+      });
+      const cancelParams = new URLSearchParams({
+        consultation_id: String(formData.consultationId || ''),
+      });
+      const successUrl = `${window.location.origin}/dashboard/payment/success?${successParams.toString()}`;
+      const cancelUrl = `${window.location.origin}/dashboard/payment/cancel?${cancelParams.toString()}`;
 
       const requestData = {
         ...formData,
@@ -129,7 +136,7 @@ export default function PaymentCheckout() {
 
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
           {/* Payment Summary */}
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4">
+          <div className="bg-linear-to-r from-blue-600 to-purple-600 px-6 py-4">
             <h2 className="text-lg font-semibold text-white">Payment Summary</h2>
           </div>
 
@@ -191,7 +198,7 @@ export default function PaymentCheckout() {
 
               <div className="bg-blue-50 rounded-md p-4">
                 <div className="flex items-start">
-                  <div className="flex-shrink-0">
+                  <div className="shrink-0">
                     <svg
                       className="h-5 w-5 text-blue-400"
                       xmlns="http://www.w3.org/2000/svg"

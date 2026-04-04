@@ -251,8 +251,23 @@ export default function Home() {
       ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {dashboardStats.map((stat) => (
-          <div key={stat.name} className="dashboard-card group">
+        {dashboardStats.map((stat) => {
+          const isActiveAppointments = stat.name === 'Active Appointments';
+
+          return (
+            <div
+              key={stat.name}
+              className={`dashboard-card group ${isActiveAppointments ? 'cursor-pointer' : ''}`}
+              onClick={() => {
+                if (isActiveAppointments) navigate('/dashboard/appointments');
+              }}
+              role={isActiveAppointments ? 'button' : undefined}
+              tabIndex={isActiveAppointments ? 0 : undefined}
+              onKeyDown={(e) => {
+                if (!isActiveAppointments) return;
+                if (e.key === 'Enter' || e.key === ' ') navigate('/dashboard/appointments');
+              }}
+            >
             <div className="flex items-center justify-between mb-6">
               <div className={`p-4 rounded-xl ${stat.color} text-white shadow-lg transition-all group-hover:rotate-6`}>
                 <stat.icon className="h-6 w-6" />
@@ -264,7 +279,8 @@ export default function Home() {
             <p className="text-[9px] font-black text-[#808e9b] uppercase tracking-[0.2em] mb-1">{stat.name}</p>
             <p className="text-3xl font-black text-[#182C61] tracking-tighter">{loading ? '...' : stat.value}</p>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
