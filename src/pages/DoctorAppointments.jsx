@@ -20,6 +20,7 @@ export default function DoctorAppointments() {
   const [appointments, setAppointments] = useState([]);
   const [sessionLinksByAppointment, setSessionLinksByAppointment] = useState({});
   const [generatingByAppointment, setGeneratingByAppointment] = useState({});
+  const [actingByAppointment, setActingByAppointment] = useState({});
   const [actionMessage, setActionMessage] = useState('');
 
   const loadAppointments = async () => {
@@ -77,6 +78,31 @@ export default function DoctorAppointments() {
       setActionMessage(e?.message || 'Failed to generate session link');
     } finally {
       setGeneratingByAppointment((prev) => ({ ...prev, [appointmentId]: false }));
+    }
+  };
+
+  const handleDoctorAction = async (appointment, action) => {
+    const appointmentId = String(appointment?.id || '');
+    if (!appointmentId || !doctorId) {
+      setActionMessage('Missing appointment or doctor id.');
+      return;
+    }
+
+    setActionMessage('');
+    setActingByAppointment((prev) => ({ ...prev, [appointmentId]: true }));
+    try {
+      const payload = { action, message: action === 'ACCEPT' ? 'Approved by doctor' : 'Declined by doctor' };
+      await API.doctorAppointments.action(doctorId, appointmentId, payload);
+      setActionMessage(
+        action === 'ACCEPT'
+          ? `Appointment ${appointmentId} approved. Patient can now see approved status.`
+          : `Appointment ${appointmentId} declined.`,
+      );
+      await loadAppointments();
+    } catch (e) {
+      setActionMessage(e?.message || `Failed to ${action.toLowerCase()} appointment`);
+    } finally {
+      setActingByAppointment((prev) => ({ ...prev, [appointmentId]: false }));
     }
   };
 
@@ -159,12 +185,33 @@ export default function DoctorAppointments() {
                     {String(a.status || '—').toUpperCase()}
                   </div>
 
+                  {isPendingApproval(a) ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDoctorAction(a, 'ACCEPT')}
+                        disabled={Boolean(actingByAppointment[a.id])}
+                        className="px-3 py-1.5 rounded-lg text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        {actingByAppointment[a.id] ? 'Saving...' : 'Approve'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDoctorAction(a, 'DECLINE')}
+                        disabled={Boolean(actingByAppointment[a.id])}
+                        className="px-3 py-1.5 rounded-lg text-xs font-black border border-rose-600 text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  ) : null}
+
                   {canGenerateSession(a) ? (
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => handleGenerateSessionLink(a)}
-                        disabled={Boolean(generatingByAppointment[a.id])}
+                        disabled={Boolean(generatingByAppointment[a.id]) || Boolean(actingByAppointment[a.id])}
                         className="px-3 py-1.5 rounded-lg text-xs font-black bg-[#182C61] text-white hover:bg-[#182C61]/85 disabled:opacity-60"
                       >
                         {generatingByAppointment[a.id] ? 'Generating...' : 'Generate Link'}
@@ -201,4 +248,9 @@ function formatAppointmentTime(value) {
 function canGenerateSession(appointment) {
   const status = String(appointment?.status || '').toUpperCase();
   return status === 'ACCEPTED';
+}
+
+function isPendingApproval(appointment) {
+  const status = String(appointment?.status || '').toUpperCase();
+  return status === 'PENDING' || status === 'RESCHEDULE_REQUESTED';
 }

@@ -425,6 +425,39 @@ export const API = {
         },
       })
     },
+    action: (doctorId, appointmentId, payload) =>
+      apiClient(
+        `${services.appointment}/api/doctor/appointments/${encodeURIComponent(String(appointmentId))}/action`,
+        {
+          method: 'POST',
+          headers: {
+            'X-Doctor-Id': String(doctorId),
+          },
+          body: JSON.stringify(payload),
+        },
+      ),
+    accept: (doctorId, appointmentId, message = '') =>
+      apiClient(
+        `${services.appointment}/api/doctor/appointments/${encodeURIComponent(String(appointmentId))}/action`,
+        {
+          method: 'POST',
+          headers: {
+            'X-Doctor-Id': String(doctorId),
+          },
+          body: JSON.stringify({ action: 'ACCEPT', message }),
+        },
+      ),
+    decline: (doctorId, appointmentId, message = '') =>
+      apiClient(
+        `${services.appointment}/api/doctor/appointments/${encodeURIComponent(String(appointmentId))}/action`,
+        {
+          method: 'POST',
+          headers: {
+            'X-Doctor-Id': String(doctorId),
+          },
+          body: JSON.stringify({ action: 'DECLINE', message }),
+        },
+      ),
   },
 
   /** Appointment service: doctor directory for booking (optional `specialty` query). */
