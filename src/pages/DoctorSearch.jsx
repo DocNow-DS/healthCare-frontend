@@ -6,11 +6,13 @@ import {
   ExclamationTriangleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import { useNavigate } from 'react-router-dom';
 import { API } from '../config/api';
 
 const fallbackImage = 'https://images.unsplash.com/photo-1559839734-2b71f1536783?auto=format&fit=crop&q=80&w=200';
 
 export default function DoctorSearch() {
+  const navigate = useNavigate();
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -88,7 +90,10 @@ export default function DoctorSearch() {
         consultationType: bookForm.consultationType,
         notes: bookForm.notes || undefined,
       });
-      setBookMessage({ type: 'ok', text: 'Appointment requested successfully.' });
+      setBookMessage({ type: 'ok', text: 'Appointment requested. Waiting for doctor approval. Redirecting to My Appointments...' });
+      setTimeout(() => {
+        navigate('/dashboard/appointments');
+      }, 800);
     } catch (err) {
       setBookMessage({
         type: 'err',
