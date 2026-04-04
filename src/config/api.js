@@ -184,12 +184,14 @@ export const API = {
   // Patient Management Endpoints
   patients: {
     getAll: () => apiClient(`${services.patient}/api/patient/all`),
+    getById: (id) => apiClient(`${services.patient}/api/patient/${encodeURIComponent(String(id))}`),
     getProfile: () => apiClient(`${services.patient}/api/patient/profile`),
     updateProfile: (data) => apiClient(`${services.patient}/api/patient/profile`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
     getReports: () => apiClient(`${services.patient}/api/patient/reports`),
+    getReportsByPatientId: (id) => apiClient(`${services.patient}/api/patient/${encodeURIComponent(String(id))}/reports`),
     uploadReport: (file, description = '') => {
       const formData = new FormData();
       formData.append('file', file);
@@ -200,6 +202,8 @@ export const API = {
       });
     },
     getPrescriptions: () => apiClient(`${services.patient}/api/patient/prescriptions`),
+    getPrescriptionsByPatientId: (id) =>
+      apiClient(`${services.patient}/api/patient/${encodeURIComponent(String(id))}/prescriptions`),
   },
 
   // Doctor Management Endpoints
