@@ -34,6 +34,7 @@ const navConfigs = {
     { name: 'Medicines & Services', href: '/dashboard/medicine-services', icon: BeakerIcon },
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
     { name: 'Bill Requests', href: '/dashboard/bill-requests', icon: CreditCardIcon },
+    { name: 'Notifications', href: '/dashboard/notifications', icon: BellIcon },
     { name: 'Profile', href: '/dashboard/profile', icon: UserCircleIcon },
   ],
   Admin: [
