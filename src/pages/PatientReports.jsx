@@ -3,6 +3,7 @@ import { API } from '../config/api';
 import { DocumentTextIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { getGeneratedBillingReports } from '../utils/billingReports';
 import UploadMedicalDocument from '../components/UploadMedicalDocument';
+import { normalizeDocumentUrl } from '../utils/documentUrl';
 
 export default function PatientReports() {
   const tabs = [
@@ -114,9 +115,9 @@ export default function PatientReports() {
                   <p className="text-sm font-black text-primary-500">{item.title || item.name || 'Medical Document'}</p>
                 </div>
                 <p className="text-xs font-bold text-[#808e9b] mt-1">{item.description || item.notes || 'No description provided'}</p>
-                {(item.filePath || item.fileUrl) && (item.filePath || item.fileUrl).startsWith('http') ? (
+                {normalizeDocumentUrl(item.filePath || item.fileUrl).startsWith('http') ? (
                   <a
-                    href={item.filePath || item.fileUrl}
+                    href={normalizeDocumentUrl(item.filePath || item.fileUrl)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-block mt-2 text-xs font-black text-primary-500 hover:underline"

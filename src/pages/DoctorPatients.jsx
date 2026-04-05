@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../config/api';
 import { UserGroupIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { normalizeDocumentUrl } from '../utils/documentUrl';
 
 const readAuthUser = () => {
   try {
@@ -169,9 +170,9 @@ export default function DoctorPatients() {
                     <div key={r.id || idx} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                       <p className="text-sm font-black text-[#182C61]">{r.fileName || 'Medical Report'}</p>
                       <p className="text-xs font-bold text-[#808e9b] mt-1">{r.description || 'No description'}</p>
-                      {(r.filePath || r.fileUrl || r.downloadUrl)?.startsWith?.('http') ? (
+                      {normalizeDocumentUrl(r.filePath || r.fileUrl || r.downloadUrl).startsWith('http') ? (
                         <a
-                          href={r.filePath || r.fileUrl || r.downloadUrl}
+                          href={normalizeDocumentUrl(r.filePath || r.fileUrl || r.downloadUrl)}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-block mt-2 text-xs font-black text-[#182C61] hover:underline"

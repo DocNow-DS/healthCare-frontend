@@ -151,13 +151,16 @@ export default function BillingRequests() {
       const billId = String(bill?.id || '');
       const payment = paymentsByConsultation[billId] || null;
       const paymentStatus = normalizeStatus(payment?.status || 'UNPAID');
+      const carePlanStatus = normalizeStatus(bill?.status || 'ACTIVE');
       const isPaid = paymentStatus === 'COMPLETED';
-      return { ...bill, paymentStatus, isPaid };
+      const isInactiveByCarePlan = ['COMPLETED', 'INACTIVE', 'CANCELLED', 'PAID'].includes(carePlanStatus);
+      const isInactive = isPaid || isInactiveByCarePlan;
+      return { ...bill, paymentStatus, carePlanStatus, isPaid, isInactive };
     });
   }, [bills, paymentsByConsultation]);
 
-  const activeBills = useMemo(() => enrichedBills.filter((item) => !item.isPaid), [enrichedBills]);
-  const inactiveBills = useMemo(() => enrichedBills.filter((item) => item.isPaid), [enrichedBills]);
+  const activeBills = useMemo(() => enrichedBills.filter((item) => !item.isInactive), [enrichedBills]);
+  const inactiveBills = useMemo(() => enrichedBills.filter((item) => item.isInactive), [enrichedBills]);
 
   const totals = useMemo(() => {
     const activeTotal = activeBills.reduce((sum, bill) => sum + parseBillAmount(bill), 0);
@@ -210,10 +213,10 @@ export default function BillingRequests() {
                 <p className="text-xs font-bold text-[#808e9b] mt-1">Doctor: {bill?.doctorId || 'N/A'}</p>
                 <p className="text-xs font-bold text-[#808e9b] mt-1">Created: {bill?.createdAt ? new Date(bill.createdAt).toLocaleString() : 'N/A'}</p>
                 <div className="mt-2 flex items-center gap-2">
-                  <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black ${bill.isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                    {bill.isPaid ? 'PAID' : 'ACTIVE'}
+                  <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black ${bill.isInactive ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                    {bill.isInactive ? 'INACTIVE' : 'ACTIVE'}
                   </span>
-                  {!bill.isPaid ? (
+                  {!bill.isInactive ? (
                     <span className="inline-flex px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-100 text-blue-800">
                       Gateway Ready
                     </span>
@@ -222,9 +225,9 @@ export default function BillingRequests() {
               </div>
               <div className="text-right">
                 <p className="text-lg font-black text-primary-500">LKR {formatMoney(parseBillAmount(bill))}</p>
-                {bill.isPaid ? (
+                {bill.isInactive ? (
                   <span className="inline-flex mt-2 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
-                    Settled
+                    {bill.isPaid ? 'Settled' : 'Closed'}
                   </span>
                 ) : role === 'PATIENT' ? (
                   <button

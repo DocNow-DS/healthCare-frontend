@@ -244,6 +244,11 @@ export const API = {
     getByPatient: (patientId) => apiClient(`${services.doctor}/api/care-plans/patient/${patientId}`),
     getByDoctorAndPatient: (doctorId, patientId) =>
       apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}/patient/${patientId}`),
+    // Internal endpoint used after successful payment to mark a bill inactive/completed.
+    markPaidInternal: (carePlanId) =>
+      apiClient(`${services.doctor}/api/internal/care-plans/${encodeURIComponent(String(carePlanId))}/mark-paid`, {
+        method: 'POST',
+      }),
   },
 
   medicines: {
