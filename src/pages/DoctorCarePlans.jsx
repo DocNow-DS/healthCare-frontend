@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
 import { API } from '../config/api';
-import { ClipboardDocumentListIcon, PlusIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentListIcon, PlusIcon, TrashIcon, ExclamationTriangleIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 
 const readAuthUser = () => {
   try {
@@ -616,6 +617,147 @@ export default function DoctorCarePlans({ onlyCatalog = false }) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return 'N/A';
     return date.toLocaleString();
+  };
+
+  const openDigitalPrescription = (plan) => {
+    try {
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 14;
+      const contentWidth = pageWidth - margin * 2;
+      let y = 18;
+
+      const ensureSpace = (requiredHeight = 8) => {
+        if (y + requiredHeight > pageHeight - margin) {
+          doc.addPage();
+          y = 18;
+        }
+      };
+
+      const sectionTitle = (text) => {
+        ensureSpace(10);
+        doc.setDrawColor(212, 220, 235);
+        doc.setFillColor(245, 248, 253);
+        doc.roundedRect(margin, y - 5, contentWidth, 8, 1.8, 1.8, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(24, 44, 97);
+        doc.text(String(text || ''), margin + 3, y);
+        y += 10;
+      };
+
+      const kvRow = (label, value) => {
+        ensureSpace(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(58, 67, 88);
+        doc.text(`${label}:`, margin, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(33, 37, 41);
+        doc.text(String(value || 'N/A'), margin + 36, y);
+        y += 6;
+      };
+
+      const paragraph = (label, value) => {
+        ensureSpace(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(58, 67, 88);
+        doc.text(`${label}:`, margin, y);
+        y += 5;
+        const lines = doc.splitTextToSize(String(value || 'N/A'), contentWidth - 2);
+        lines.forEach((line) => {
+          ensureSpace(5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(33, 37, 41);
+          doc.text(line, margin + 2, y);
+          y += 5;
+        });
+      };
+
+      // Header banner
+      doc.setFillColor(24, 44, 97);
+      doc.roundedRect(margin, 10, contentWidth, 18, 2.2, 2.2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(255, 255, 255);
+      doc.text('Digital Prescription', margin + 4, 18);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(`Dr. ${authUser?.name || authUser?.username || 'Doctor'}`, margin + 4, 24);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin - 54, 24);
+
+      y = 34;
+      sectionTitle('Appointment Summary');
+      kvRow('Appointment ID', plan?.appointmentId || 'N/A');
+      kvRow('Date & Time', getPlanTimelineText(plan));
+      kvRow('Status', plan?.status || 'ACTIVE');
+      kvRow('Total Bill', `LKR ${formatCurrency(plan?.totalBill)}`);
+
+      y += 2;
+      sectionTitle('Patient Details');
+      kvRow('Name', patientDetails?.name || plan?.patientName || 'N/A');
+      kvRow('Phone', patientDetails?.phone || 'N/A');
+      kvRow('Gender', patientDetails?.gender || 'N/A');
+      kvRow('Age', patientDetails?.age || 'N/A');
+
+      y += 2;
+      sectionTitle(`Medicine Prescription (${Array.isArray(plan?.medicines) ? plan.medicines.length : 0})`);
+      if (!Array.isArray(plan?.medicines) || plan.medicines.length === 0) {
+        kvRow('Notes', 'No medicines prescribed');
+      } else {
+        plan.medicines.forEach((medicine, index) => {
+          ensureSpace(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(24, 44, 97);
+          doc.text(`${index + 1}. ${medicine?.medicineName || 'Medicine'}`, margin, y);
+          y += 5;
+          kvRow('Dosage', medicine?.dosage || 'N/A');
+          kvRow('Frequency', medicine?.frequency || 'N/A');
+          kvRow('Duration', medicine?.durationDays != null ? `${medicine.durationDays} days` : 'N/A');
+          kvRow('Instructions', medicine?.instructions || 'N/A');
+          y += 1;
+        });
+      }
+
+      y += 1;
+      sectionTitle(`Service Prescription (${Array.isArray(plan?.preVisitServices) ? plan.preVisitServices.length : 0})`);
+      if (!Array.isArray(plan?.preVisitServices) || plan.preVisitServices.length === 0) {
+        kvRow('Notes', 'No pre-visit services prescribed');
+      } else {
+        plan.preVisitServices.forEach((service, index) => {
+          ensureSpace(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(24, 44, 97);
+          doc.text(`${index + 1}. ${service?.serviceName || 'Service'}`, margin, y);
+          y += 5;
+          kvRow('Cost', `LKR ${formatCurrency(service?.price)}`);
+          kvRow('Notes', service?.notes || 'N/A');
+          y += 1;
+        });
+      }
+
+      y += 1;
+      sectionTitle('Consultation Notes');
+      paragraph('Clinical Summary', plan?.consultationNotes || 'No consultation notes');
+
+      ensureSpace(16);
+      doc.setDrawColor(180, 180, 180);
+      doc.line(pageWidth - margin - 60, pageHeight - 28, pageWidth - margin, pageHeight - 28);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(90, 90, 90);
+      doc.text('Doctor Signature', pageWidth - margin - 43, pageHeight - 23);
+
+      const blobUrl = doc.output('bloburl');
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      setSuccess('Digital prescription opened in a new tab.');
+    } catch (e) {
+      setError(e?.message || 'Unable to generate digital prescription PDF');
+    }
   };
 
   return (
@@ -1344,23 +1486,35 @@ export default function DoctorCarePlans({ onlyCatalog = false }) {
             <div className="space-y-3">
               {plans.map((plan) => (
                 <div key={plan.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedPlanId((prev) => (prev === String(plan.id) ? '' : String(plan.id)))}
-                    className="w-full text-left"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <ClipboardDocumentListIcon className="h-5 w-5 text-[#182C61]" />
-                        <p className="text-sm font-black text-[#182C61]">Appointment: {plan.appointmentId || 'N/A'}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedPlanId((prev) => (prev === String(plan.id) ? '' : String(plan.id)))}
+                      className="flex-1 text-left"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <ClipboardDocumentListIcon className="h-5 w-5 text-[#182C61]" />
+                          <p className="text-sm font-black text-[#182C61]">Appointment: {plan.appointmentId || 'N/A'}</p>
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
+                          {plan.status || 'ACTIVE'}
+                        </span>
                       </div>
-                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
-                        {plan.status || 'ACTIVE'}
-                      </span>
-                    </div>
-                    <p className="text-xs font-bold text-[#808e9b] mt-2">Date &amp; Time: {getPlanTimelineText(plan)}</p>
-                    <p className="text-xs font-black text-[#182C61] mt-1">Total Bill: LKR {formatCurrency(plan.totalBill)}</p>
-                  </button>
+                      <p className="text-xs font-bold text-[#808e9b] mt-2">Date &amp; Time: {getPlanTimelineText(plan)}</p>
+                      <p className="text-xs font-black text-[#182C61] mt-1">Total Bill: LKR {formatCurrency(plan.totalBill)}</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      title="Digital Prescription"
+                      aria-label="Digital Prescription"
+                      onClick={() => openDigitalPrescription(plan)}
+                      className="p-2 rounded-lg border border-[#182C61]/30 text-[#182C61] hover:bg-[#182C61]/5"
+                    >
+                      <DocumentTextIcon className="h-4 w-4" />
+                    </button>
+                  </div>
 
                   {expandedPlanId === String(plan.id) ? (
                     <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
