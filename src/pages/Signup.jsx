@@ -3,35 +3,56 @@ import { Link, useNavigate } from 'react-router-dom';
 import { API } from '../config/api';
 
 export default function Signup({ onSignup }) {
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('Patient');
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    password: '',
+    name: '',
+    phone: '',
+    age: '',
+    gender: '',
+    address: '',
+    medicalHistory: ''
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError('');
     try {
-      const normalizedRole = role.toUpperCase();
       const result = await API.auth.register({
-        username,
-        email,
-        password,
-        role: normalizedRole,
-        roles: normalizedRole,
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        role: 'PATIENT',
+        roles: 'PATIENT',
+        name: formData.name,
+        phone: formData.phone,
+        age: formData.age ? parseInt(formData.age) : null,
+        gender: formData.gender,
+        address: formData.address,
+        medicalHistory: formData.medicalHistory
       });
 
       const token = result?.token;
-      const user = result?.user || { username, email, role };
+      const user = result?.user || { 
+        username: formData.username, 
+        email: formData.email, 
+        role: 'PATIENT' 
+      };
 
       if (token) {
         localStorage.setItem('auth_token', token);
       }
-      localStorage.setItem('auth_user', JSON.stringify({ ...user, role }));
+      localStorage.setItem('auth_user', JSON.stringify({ ...user, role: 'PATIENT' }));
 
       if (onSignup) onSignup();
       navigate('/dashboard');
@@ -54,7 +75,7 @@ export default function Signup({ onSignup }) {
           Join DocNow<span className="text-[#eb2f06]">.</span>
         </h2>
         <p className="mt-2 text-center text-[10px] font-black text-[#808e9b] uppercase tracking-[0.2em]">
-          Standard Patient Enrollment
+          Patient Registration
         </p>
       </div>
 
@@ -62,55 +83,116 @@ export default function Signup({ onSignup }) {
         <div className="bg-white py-10 px-8 border-2 border-slate-50 rounded-[2rem] shadow-2xl shadow-[#182C61]/5 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-1.5 h-full bg-[#182C61]"></div>
           
-          <div className="flex gap-3 mb-8">
-            {['Patient', 'Doctor'].map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRole(r)}
-                className={`flex-1 py-3 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl transition-all duration-300 border-2 ${
-                  role === r 
-                  ? 'bg-[#182C61] text-white border-[#182C61] shadow-lg' 
-                  : 'bg-white text-[#808e9b] border-slate-50 hover:border-[#182C61]/20'
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-
-          <form className="space-y-6" onSubmit={handleSubmit}>
+          <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Legal Name</label>
+                <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Username</label>
                 <input
                   type="text"
+                  name="username"
                   required
                   className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  value={formData.username}
+                  onChange={handleChange}
                 />
               </div>
+              <div>
+                <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Full Name</label>
+                <input
+                  type="text"
+                  name="name"
+                  required
+                  className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
+                  value={formData.name}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Email</label>
                 <input
                   type="email"
+                  name="email"
                   required
                   className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={formData.email}
+                  onChange={handleChange}
                 />
               </div>
+              <div>
+                <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Phone Number</label>
+                <input
+                  type="tel"
+                  name="phone"
+                  className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
+                  value={formData.phone}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Age</label>
+                <input
+                  type="number"
+                  name="age"
+                  min="0"
+                  max="150"
+                  className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
+                  value={formData.age}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Gender</label>
+                <select
+                  name="gender"
+                  className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
+                  value={formData.gender}
+                  onChange={handleChange}
+                >
+                  <option value="">Select Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Address</label>
+              <input
+                type="text"
+                name="address"
+                className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
+                value={formData.address}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Medical History (Optional)</label>
+              <textarea
+                name="medicalHistory"
+                rows="2"
+                className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all resize-none"
+                value={formData.medicalHistory}
+                onChange={handleChange}
+              />
             </div>
 
             <div>
               <label className="block text-[10px] font-black text-[#808e9b] uppercase tracking-widest mb-2">Secure Password</label>
               <input
                 type="password"
+                name="password"
                 required
                 className="w-full px-5 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] text-sm text-[#1e272e] font-black transition-all"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={formData.password}
+                onChange={handleChange}
               />
             </div>
 

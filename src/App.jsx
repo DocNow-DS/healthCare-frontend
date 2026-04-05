@@ -22,6 +22,7 @@ import PatientReports from './pages/PatientReports.jsx'
 import PatientNotifications from './pages/PatientNotifications.jsx'
 import PatientProfile from './pages/PatientProfile.jsx'
 import DoctorProfile from './pages/DoctorProfile.jsx'
+import DoctorNotifications from './pages/DoctorNotifications.jsx'
 import PaymentHistory from './pages/PaymentHistory.jsx'
 import PaymentCheckout from './pages/PaymentCheckout.jsx'
 import PaymentSuccess from './pages/PaymentSuccess.jsx'
@@ -93,6 +94,7 @@ function App() {
                     <Route path="care-plans" element={<DoctorCarePlans />} />
                     <Route path="consultations" element={<VideoConsultation />} />
                     <Route path="bill-requests" element={<BillingRequests />} />
+                    <Route path="notifications" element={<DoctorNotifications />} />
                     <Route path="profile" element={<DoctorProfile />} />
                   </>
                 ) : (
