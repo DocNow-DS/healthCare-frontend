@@ -112,6 +112,7 @@ const apiClient = async (url, options = {}) => {
       console.log('[API] REQUEST', { url, config: { method: config.method || 'GET', headers: config.headers } });
     }
     const response = await fetch(url, config);
+
     const contentType = response.headers.get('content-type') || '';
     const isJson = contentType.includes('application/json');
     const text = await response.text();
@@ -124,12 +125,14 @@ const apiClient = async (url, options = {}) => {
       }
     }
 
+
     if (!response.ok) {
       const backendMessage = typeof payload === 'string'
         ? payload
         : payload?.message || payload?.error || response.statusText;
 
       if (response.status === 401) {
+        // Token expired or invalid, clear storage and redirect to login
         clearAuthData();
         window.location.href = '/login';
         throw new Error('Authentication required');
@@ -147,13 +150,16 @@ const apiClient = async (url, options = {}) => {
     }
 
     return payload;
+
   } catch (error) {
     const message = String(error?.message || '');
     if (
       error?.name === 'TypeError' ||
       /NetworkError|Failed to fetch|fetch resource/i.test(message)
     ) {
-      const networkErr = new Error(`Network error calling ${url}. The backend service may be down or blocked by CORS.`);
+      const networkErr = new Error('Network error. A backend service is unavailable or blocked by CORS.');
+      networkErr.isNetworkError = true;
+      networkErr.requestUrl = url;
       networkErr.cause = error;
       console.error('API Error:', networkErr);
       throw networkErr;
@@ -211,10 +217,7 @@ export const API = {
     getAll: () => apiClient(`${services.doctor}/api/doctors`),
     getById: (id) => apiClient(`${services.doctor}/api/doctors/${id}`),
     getByEmail: (email) => apiClient(`${services.doctor}/api/doctors/email/${email}`),
-    getBySpecialization: (specialization) =>
-      apiClient(
-        `${services.doctor}/api/doctors/specialization/${encodeURIComponent(specialization)}`,
-      ),
+    getBySpecialization: (specialization) => apiClient(`${services.doctor}/api/doctors/specialization/${specialization}`),
     update: (id, data) => apiClient(`${services.doctor}/api/doctors/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -241,7 +244,6 @@ export const API = {
       body: JSON.stringify(payload),
     }),
     getByDoctor: (doctorId) => apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}`),
-    getByPatient: (patientId) => apiClient(`${services.doctor}/api/care-plans/patient/${patientId}`),
     getByDoctorAndPatient: (doctorId, patientId) =>
       apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}/patient/${patientId}`),
     // Internal endpoint used after successful payment to mark a bill inactive/completed.
@@ -258,6 +260,18 @@ export const API = {
       body: JSON.stringify(payload),
     }),
     update: (id, payload) => apiClient(`${services.doctor}/api/medicines/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  },
+
+  preVisitServices: {
+    getAll: () => apiClient(`${services.doctor}/api/pre-visit-services`),
+    create: (payload) => apiClient(`${services.doctor}/api/pre-visit-services`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+    update: (id, payload) => apiClient(`${services.doctor}/api/pre-visit-services/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
@@ -376,31 +390,44 @@ export const API = {
     getMyPayments: () => apiClient(`${services.payment}/api/v1/payments/patient/my-payments`),
   },
 
+
   patientAppointments: {
     /** Requires patient JWT; returns appointments for the authenticated user. */
     list: async () => {
+      let primaryError;
       try {
         return await apiClient(`${services.appointment}/api/patient/appointments`, {
           method: 'GET',
         });
       } catch (error) {
+        primaryError = error;
         const patientId = getCurrentPatientId();
         if (!patientId) throw error;
 
-        // Fallback: derive appointment-like rows from telemed sessions when appointment service is unavailable.
-        const sessions = await telemedSessionsClient(`/patient/${encodeURIComponent(patientId)}/sessions`);
-        const safeSessions = Array.isArray(sessions) ? sessions : [];
-        return safeSessions.map((s) => ({
-          id: s?.id || s?.consultationId || s?.appointmentId,
-          doctorId: s?.doctorId || '',
-          startTime: s?.startedAt || s?.createdAt || null,
-          endTime: s?.endedAt || null,
-          consultationType: s?.type || 'ONLINE',
-          status: String(s?.status || 'SCHEDULED').toUpperCase(),
-          notes: s?.notes || '',
-          progressPercent: typeof s?.progressPercent === 'number' ? s.progressPercent : 0,
-          progressLabel: s?.progressLabel || '',
-        }));
+        try {
+          // Fallback: derive appointment-like rows from telemed sessions when appointment service is unavailable.
+          const sessions = await telemedSessionsClient(`/patient/${encodeURIComponent(patientId)}/sessions`);
+          const safeSessions = Array.isArray(sessions) ? sessions : [];
+          return safeSessions.map((s) => ({
+            id: s?.id || s?.consultationId || s?.appointmentId,
+            doctorId: s?.doctorId || '',
+            startTime: s?.startedAt || s?.createdAt || null,
+            endTime: s?.endedAt || null,
+            consultationType: s?.type || 'ONLINE',
+            status: String(s?.status || 'SCHEDULED').toUpperCase(),
+            notes: s?.notes || '',
+            progressPercent: typeof s?.progressPercent === 'number' ? s.progressPercent : 0,
+            progressLabel: s?.progressLabel || '',
+          }));
+        } catch (fallbackError) {
+          const unavailable = new Error(
+            'Appointments are temporarily unavailable. Please ensure the Appointment and Telemedicine services are running, then try again.'
+          );
+          unavailable.primaryError = primaryError;
+          unavailable.fallbackError = fallbackError;
+          unavailable.isServiceUnavailable = true;
+          throw unavailable;
+        }
       }
     },
     cancel: (appointmentId) =>
@@ -494,6 +521,7 @@ export const API = {
       }
     },
   },
+
 
 };
 

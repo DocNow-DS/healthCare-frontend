@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
 import { API } from '../config/api';
-import { ClipboardDocumentListIcon, PlusIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentListIcon, PlusIcon, TrashIcon, ExclamationTriangleIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 
 const readAuthUser = () => {
   try {
@@ -23,6 +24,7 @@ const emptyMedicine = () => ({
 
 const emptyService = () => ({
   serviceName: '',
+  price: '',
   notes: '',
 });
 
@@ -38,11 +40,60 @@ const formatCurrency = (value) => {
   return amount.toFixed(2);
 };
 
-export default function DoctorCarePlans() {
+const parseRequestedTab = (tabValue) => {
+  const normalized = String(tabValue || '').trim().toLowerCase();
+  if (normalized === 'history' || normalized === 'medicine-services') {
+    return normalized;
+  }
+  return 'create';
+};
+
+const getPlanTimelineText = (plan) => {
+  const appointmentDate = plan?.appointmentDate || plan?.appointmentAt || plan?.appointmentTime || plan?.createdAt;
+  if (!appointmentDate) return 'No appointment time';
+  const parsed = new Date(appointmentDate);
+  if (Number.isNaN(parsed.getTime())) return String(appointmentDate);
+  return parsed.toLocaleString();
+};
+
+const buildPatientDetailsFromNavigation = (navigationState, fallbackPatientId) => {
+  const source = navigationState?.patientDetails || {};
+  const id =
+    source?._id || source?.id || source?.patientId || source?.userId || (fallbackPatientId ? String(fallbackPatientId) : '');
+
+  return {
+    id: String(id || ''),
+    name: String(source?.name || source?.fullName || source?.username || ''),
+    email: String(source?.email || ''),
+    phone: String(source?.phone || ''),
+    age: source?.age != null ? String(source.age) : '',
+    gender: String(source?.gender || ''),
+  };
+};
+
+const mapPatientProfile = (profile, fallbackPatientId) => ({
+  id: String(profile?._id || profile?.id || profile?.userId || fallbackPatientId || ''),
+  name: String(profile?.name || profile?.username || ''),
+  email: String(profile?.email || ''),
+  phone: String(profile?.phone || ''),
+  age: profile?.age != null ? String(profile.age) : '',
+  gender: String(profile?.gender || ''),
+});
+
+const resolveCanonicalPatientId = (profile, fallbackPatientId) =>
+  String(profile?._id || profile?.id || profile?.userId || fallbackPatientId || '').trim();
+
+export default function DoctorCarePlans({ onlyCatalog = false }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { patientId: routePatientId } = useParams();
   const [searchParams] = useSearchParams();
+  const initialPatientId = routePatientId || searchParams.get('patientId') || '';
+  const initialAppointmentId = searchParams.get('appointmentId') || '';
+  const initialTab = onlyCatalog ? 'medicine-services' : parseRequestedTab(searchParams.get('tab'));
   const authUser = useMemo(() => readAuthUser(), []);
   const doctorId = useMemo(() => authUser?.id || authUser?.userId || authUser?.username || '', [authUser]);
-  const [activeTab, setActiveTab] = useState('create');
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -52,10 +103,17 @@ export default function DoctorCarePlans() {
   const [medicineCatalog, setMedicineCatalog] = useState([]);
   const [medicineCatalogLoading, setMedicineCatalogLoading] = useState(false);
   const [medicineCatalogError, setMedicineCatalogError] = useState('');
+  const [serviceCatalog, setServiceCatalog] = useState([]);
+  const [serviceCatalogLoading, setServiceCatalogLoading] = useState(false);
+  const [serviceCatalogError, setServiceCatalogError] = useState('');
   const [addingMedicine, setAddingMedicine] = useState(false);
+  const [addingServiceCatalog, setAddingServiceCatalog] = useState(false);
   const [isMedicineModalOpen, setIsMedicineModalOpen] = useState(false);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [editingMedicineId, setEditingMedicineId] = useState('');
   const [updatingMedicine, setUpdatingMedicine] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState('');
+  const [updatingServiceCatalog, setUpdatingServiceCatalog] = useState(false);
   const [editMedicineForm, setEditMedicineForm] = useState({
     name: '',
     price: '',
@@ -70,16 +128,32 @@ export default function DoctorCarePlans() {
     strength: '',
     notes: '',
   });
+  const [newServiceCatalogItem, setNewServiceCatalogItem] = useState({
+    serviceName: '',
+    price: '',
+    notes: '',
+  });
+  const [editServiceCatalogForm, setEditServiceCatalogForm] = useState({
+    serviceName: '',
+    price: '',
+    notes: '',
+  });
 
-  const [patientId, setPatientId] = useState(searchParams.get('patientId') || '');
-  const [appointmentId, setAppointmentId] = useState(searchParams.get('appointmentId') || '');
+  const [patientId, setPatientId] = useState(initialPatientId);
+  const [appointmentId, setAppointmentId] = useState(initialAppointmentId);
+  const [patientDetails, setPatientDetails] = useState(() =>
+    buildPatientDetailsFromNavigation(location.state, initialPatientId),
+  );
+  const [patientDetailsLoading, setPatientDetailsLoading] = useState(false);
+  const [patientDetailsError, setPatientDetailsError] = useState('');
   const [consultationNotes, setConsultationNotes] = useState('');
   const [allergiesText, setAllergiesText] = useState('');
   const [nextVisitDays, setNextVisitDays] = useState('');
   const [medicines, setMedicines] = useState([emptyMedicine()]);
   const [preVisitServices, setPreVisitServices] = useState([emptyService()]);
 
-  const [historyPatientId, setHistoryPatientId] = useState(searchParams.get('patientId') || '');
+  const [historyPatientId, setHistoryPatientId] = useState(initialPatientId);
+  const [expandedPlanId, setExpandedPlanId] = useState('');
   const [consultationSessions, setConsultationSessions] = useState([]);
   const [consultationLoading, setConsultationLoading] = useState(false);
   const [consultationError, setConsultationError] = useState('');
@@ -125,6 +199,20 @@ export default function DoctorCarePlans() {
     }
   };
 
+  const loadServiceCatalog = async () => {
+    setServiceCatalogLoading(true);
+    setServiceCatalogError('');
+    try {
+      const list = await API.preVisitServices.getAll();
+      setServiceCatalog(Array.isArray(list) ? list : []);
+    } catch (e) {
+      setServiceCatalog([]);
+      setServiceCatalogError(e?.payload?.message || e?.message || 'Unable to load pre-visit service catalog');
+    } finally {
+      setServiceCatalogLoading(false);
+    }
+  };
+
   const loadConsultationSessions = async () => {
     if (!doctorId) return;
     setConsultationLoading(true);
@@ -145,18 +233,104 @@ export default function DoctorCarePlans() {
   };
 
   useEffect(() => {
+    if (onlyCatalog) {
+      return;
+    }
     loadPlans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doctorId, historyPatientId]);
+  }, [doctorId, historyPatientId, onlyCatalog]);
 
   useEffect(() => {
+    if (onlyCatalog) {
+      return;
+    }
     loadConsultationSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doctorId, historyPatientId]);
+  }, [doctorId, historyPatientId, onlyCatalog]);
 
   useEffect(() => {
     loadMedicineCatalog();
+    loadServiceCatalog();
   }, []);
+
+  useEffect(() => {
+    setActiveTab(onlyCatalog ? 'medicine-services' : parseRequestedTab(searchParams.get('tab')));
+    const resolvedPatientId = routePatientId || searchParams.get('patientId') || '';
+    setPatientId(resolvedPatientId);
+    setAppointmentId(searchParams.get('appointmentId') || '');
+    setHistoryPatientId(resolvedPatientId);
+    setPatientDetails(buildPatientDetailsFromNavigation(location.state, resolvedPatientId));
+  }, [location.state, routePatientId, searchParams, onlyCatalog]);
+
+  useEffect(() => {
+    if (onlyCatalog) {
+      return;
+    }
+    const normalizedPatientId = String(patientId || '').trim();
+    if (!normalizedPatientId) {
+      setPatientDetails((prev) => ({ ...prev, id: '', name: '', email: '', phone: '', age: '', gender: '' }));
+      setPatientDetailsError('');
+      return;
+    }
+
+    setPatientDetails((prev) => ({ ...prev, id: normalizedPatientId }));
+
+    const hasExistingCoreDetails =
+      String(patientDetails?.name || '').trim() || String(patientDetails?.email || '').trim() || String(patientDetails?.phone || '').trim();
+    if (hasExistingCoreDetails) {
+      return;
+    }
+
+    let cancelled = false;
+    const loadPatientDetails = async () => {
+      setPatientDetailsLoading(true);
+      setPatientDetailsError('');
+      try {
+        const looksNumericPatientId = /^\d+$/.test(normalizedPatientId);
+        let profile = null;
+
+        if (looksNumericPatientId) {
+          profile = await API.patients.getById(normalizedPatientId);
+        } else {
+          const allPatients = await API.patients.getAll();
+          const normalizedLookup = normalizedPatientId.toLowerCase();
+          const safePatients = Array.isArray(allPatients) ? allPatients : [];
+          profile =
+            safePatients.find((item) => {
+              const values = [item?._id, item?.id, item?.userId, item?.username, item?.email];
+              return values.some((value) => String(value || '').trim().toLowerCase() === normalizedLookup);
+            }) || null;
+        }
+
+        if (cancelled) return;
+        if (profile) {
+          const canonicalPatientId = resolveCanonicalPatientId(profile, normalizedPatientId);
+          setPatientDetails(mapPatientProfile(profile, canonicalPatientId));
+          if (canonicalPatientId && canonicalPatientId !== normalizedPatientId) {
+            setPatientId(canonicalPatientId);
+            setHistoryPatientId(canonicalPatientId);
+          }
+          setPatientDetailsError('');
+        } else {
+          setPatientDetails((prev) => ({ ...prev, id: normalizedPatientId }));
+          setPatientDetailsError('Patient profile not found for auto-fill. You can still create the care plan using Patient ID.');
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setPatientDetails((prev) => ({ ...prev, id: normalizedPatientId }));
+        setPatientDetailsError(e?.payload?.message || e?.message || 'Unable to load patient details');
+      } finally {
+        if (!cancelled) {
+          setPatientDetailsLoading(false);
+        }
+      }
+    };
+
+    loadPatientDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId, patientDetails?.email, patientDetails?.name, patientDetails?.phone, onlyCatalog]);
 
   const medicineCatalogByName = useMemo(() => {
     const map = new Map();
@@ -170,6 +344,21 @@ export default function DoctorCarePlans() {
   const totalMedicineCost = useMemo(() => {
     return medicines.reduce((sum, medicine) => sum + parsePrice(medicine.price), 0);
   }, [medicines]);
+
+  const serviceCatalogByName = useMemo(() => {
+    const map = new Map();
+    serviceCatalog.forEach((item) => {
+      const key = String(item?.serviceName || '').trim().toLowerCase();
+      if (key) map.set(key, item);
+    });
+    return map;
+  }, [serviceCatalog]);
+
+  const totalServiceCost = useMemo(() => {
+    return preVisitServices.reduce((sum, service) => sum + parsePrice(service.price), 0);
+  }, [preVisitServices]);
+
+  const grandTotalCost = useMemo(() => totalMedicineCost + totalServiceCost, [totalMedicineCost, totalServiceCost]);
 
   const updateMedicine = (index, key, value) => {
     setMedicines((prev) => prev.map((m, i) => (i === index ? { ...m, [key]: value } : m)));
@@ -192,6 +381,21 @@ export default function DoctorCarePlans() {
 
   const updateService = (index, key, value) => {
     setPreVisitServices((prev) => prev.map((s, i) => (i === index ? { ...s, [key]: value } : s)));
+  };
+
+  const updateServiceName = (index, serviceName) => {
+    const matched = serviceCatalogByName.get(String(serviceName || '').trim().toLowerCase());
+    setPreVisitServices((prev) =>
+      prev.map((s, i) =>
+        i === index
+          ? {
+              ...s,
+              serviceName,
+              price: matched?.price != null ? String(matched.price) : s.price,
+            }
+          : s,
+      ),
+    );
   };
 
   const addMedicine = () => setMedicines((prev) => [...prev, emptyMedicine()]);
@@ -283,6 +487,75 @@ export default function DoctorCarePlans() {
     }
   };
 
+  const handleAddServiceToCatalog = async (e) => {
+    e.preventDefault();
+    if (!newServiceCatalogItem.serviceName.trim()) {
+      setServiceCatalogError('Service name is required');
+      return;
+    }
+    if (!newServiceCatalogItem.price || parsePrice(newServiceCatalogItem.price) <= 0) {
+      setServiceCatalogError('Service price is required and must be greater than 0');
+      return;
+    }
+
+    setAddingServiceCatalog(true);
+    setServiceCatalogError('');
+    try {
+      await API.preVisitServices.create({
+        serviceName: newServiceCatalogItem.serviceName.trim(),
+        price: parsePrice(newServiceCatalogItem.price),
+        notes: newServiceCatalogItem.notes.trim(),
+        active: true,
+      });
+      setNewServiceCatalogItem({ serviceName: '', price: '', notes: '' });
+      await loadServiceCatalog();
+      setSuccess('Pre-visit service added to catalog.');
+    } catch (e2) {
+      setServiceCatalogError(e2?.payload?.message || e2?.message || 'Failed to add pre-visit service');
+    } finally {
+      setAddingServiceCatalog(false);
+    }
+  };
+
+  const startEditingServiceCatalog = (service) => {
+    setEditingServiceId(service.id || '');
+    setEditServiceCatalogForm({
+      serviceName: service.serviceName || '',
+      price: service.price != null ? String(service.price) : '',
+      notes: service.notes || '',
+    });
+  };
+
+  const cancelEditingServiceCatalog = () => {
+    setEditingServiceId('');
+    setEditServiceCatalogForm({ serviceName: '', price: '', notes: '' });
+  };
+
+  const handleUpdateServiceCatalog = async (serviceId) => {
+    if (!serviceId) return;
+    if (!editServiceCatalogForm.serviceName.trim()) {
+      setServiceCatalogError('Service name is required');
+      return;
+    }
+
+    setUpdatingServiceCatalog(true);
+    setServiceCatalogError('');
+    try {
+      await API.preVisitServices.update(serviceId, {
+        serviceName: editServiceCatalogForm.serviceName.trim(),
+        price: parsePrice(editServiceCatalogForm.price),
+        notes: editServiceCatalogForm.notes.trim(),
+      });
+      await loadServiceCatalog();
+      setSuccess('Pre-visit service updated successfully.');
+      cancelEditingServiceCatalog();
+    } catch (err) {
+      setServiceCatalogError(err?.payload?.message || err?.message || 'Failed to update pre-visit service');
+    } finally {
+      setUpdatingServiceCatalog(false);
+    }
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!doctorId) {
@@ -319,6 +592,7 @@ export default function DoctorCarePlans() {
         .filter((s) => s.serviceName.trim())
         .map((s) => ({
           serviceName: s.serviceName.trim(),
+          price: parsePrice(s.price),
           notes: s.notes.trim(),
         })),
     };
@@ -329,9 +603,6 @@ export default function DoctorCarePlans() {
     try {
       await API.carePlans.create(payload);
       setSuccess('Care plan created successfully.');
-      if (!historyPatientId) {
-        setHistoryPatientId(patientId.trim());
-      }
       resetForm();
       await loadPlans();
     } catch (e2) {
@@ -348,20 +619,178 @@ export default function DoctorCarePlans() {
     return date.toLocaleString();
   };
 
+  const openDigitalPrescription = (plan) => {
+    try {
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 14;
+      const contentWidth = pageWidth - margin * 2;
+      let y = 18;
+
+      const ensureSpace = (requiredHeight = 8) => {
+        if (y + requiredHeight > pageHeight - margin) {
+          doc.addPage();
+          y = 18;
+        }
+      };
+
+      const sectionTitle = (text) => {
+        ensureSpace(10);
+        doc.setDrawColor(212, 220, 235);
+        doc.setFillColor(245, 248, 253);
+        doc.roundedRect(margin, y - 5, contentWidth, 8, 1.8, 1.8, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(24, 44, 97);
+        doc.text(String(text || ''), margin + 3, y);
+        y += 10;
+      };
+
+      const kvRow = (label, value) => {
+        ensureSpace(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(58, 67, 88);
+        doc.text(`${label}:`, margin, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(33, 37, 41);
+        doc.text(String(value || 'N/A'), margin + 36, y);
+        y += 6;
+      };
+
+      const paragraph = (label, value) => {
+        ensureSpace(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(58, 67, 88);
+        doc.text(`${label}:`, margin, y);
+        y += 5;
+        const lines = doc.splitTextToSize(String(value || 'N/A'), contentWidth - 2);
+        lines.forEach((line) => {
+          ensureSpace(5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(33, 37, 41);
+          doc.text(line, margin + 2, y);
+          y += 5;
+        });
+      };
+
+      // Header banner
+      doc.setFillColor(24, 44, 97);
+      doc.roundedRect(margin, 10, contentWidth, 18, 2.2, 2.2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(255, 255, 255);
+      doc.text('Digital Prescription', margin + 4, 18);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(`Dr. ${authUser?.name || authUser?.username || 'Doctor'}`, margin + 4, 24);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin - 54, 24);
+
+      y = 34;
+      sectionTitle('Appointment Summary');
+      kvRow('Appointment ID', plan?.appointmentId || 'N/A');
+      kvRow('Date & Time', getPlanTimelineText(plan));
+      kvRow('Status', plan?.status || 'ACTIVE');
+      kvRow('Total Bill', `LKR ${formatCurrency(plan?.totalBill)}`);
+
+      y += 2;
+      sectionTitle('Patient Details');
+      kvRow('Name', patientDetails?.name || plan?.patientName || 'N/A');
+      kvRow('Phone', patientDetails?.phone || 'N/A');
+      kvRow('Gender', patientDetails?.gender || 'N/A');
+      kvRow('Age', patientDetails?.age || 'N/A');
+
+      y += 2;
+      sectionTitle(`Medicine Prescription (${Array.isArray(plan?.medicines) ? plan.medicines.length : 0})`);
+      if (!Array.isArray(plan?.medicines) || plan.medicines.length === 0) {
+        kvRow('Notes', 'No medicines prescribed');
+      } else {
+        plan.medicines.forEach((medicine, index) => {
+          ensureSpace(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(24, 44, 97);
+          doc.text(`${index + 1}. ${medicine?.medicineName || 'Medicine'}`, margin, y);
+          y += 5;
+          kvRow('Dosage', medicine?.dosage || 'N/A');
+          kvRow('Frequency', medicine?.frequency || 'N/A');
+          kvRow('Duration', medicine?.durationDays != null ? `${medicine.durationDays} days` : 'N/A');
+          kvRow('Instructions', medicine?.instructions || 'N/A');
+          y += 1;
+        });
+      }
+
+      y += 1;
+      sectionTitle(`Service Prescription (${Array.isArray(plan?.preVisitServices) ? plan.preVisitServices.length : 0})`);
+      if (!Array.isArray(plan?.preVisitServices) || plan.preVisitServices.length === 0) {
+        kvRow('Notes', 'No pre-visit services prescribed');
+      } else {
+        plan.preVisitServices.forEach((service, index) => {
+          ensureSpace(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(24, 44, 97);
+          doc.text(`${index + 1}. ${service?.serviceName || 'Service'}`, margin, y);
+          y += 5;
+          kvRow('Cost', `LKR ${formatCurrency(service?.price)}`);
+          kvRow('Notes', service?.notes || 'N/A');
+          y += 1;
+        });
+      }
+
+      y += 1;
+      sectionTitle('Consultation Notes');
+      paragraph('Clinical Summary', plan?.consultationNotes || 'No consultation notes');
+
+      ensureSpace(16);
+      doc.setDrawColor(180, 180, 180);
+      doc.line(pageWidth - margin - 60, pageHeight - 28, pageWidth - margin, pageHeight - 28);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(90, 90, 90);
+      doc.text('Doctor Signature', pageWidth - margin - 43, pageHeight - 23);
+
+      const blobUrl = doc.output('bloburl');
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      setSuccess('Digital prescription opened in a new tab.');
+    } catch (e) {
+      setError(e?.message || 'Unable to generate digital prescription PDF');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-[#182C61]">Patient Care Plans</h1>
-          <p className="text-[#808e9b] mt-1 font-bold">Create post-appointment care plans and track your plan history</p>
+          <h1 className="text-3xl font-black text-[#182C61]">{onlyCatalog ? 'Medicines & Services' : 'Patient Care Plans'}</h1>
+          <p className="text-[#808e9b] mt-1 font-bold">
+            {onlyCatalog
+              ? 'Manage medicine catalog and pre-visit service catalog'
+              : patientDetails?.name
+              ? `${patientDetails.name} (${patientId || 'N/A'})`
+              : `Patient ID: ${patientId || 'N/A'}`}
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={loadPlans}
-          className="px-4 py-2 bg-[#182C61] text-white rounded-xl font-black text-sm hover:bg-[#182C61]/85"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {!onlyCatalog ? (
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard/patients')}
+              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl font-black text-sm hover:bg-slate-50"
+            >
+              Back to Patients
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onlyCatalog ? () => { loadMedicineCatalog(); loadServiceCatalog(); } : loadPlans}
+            className="px-4 py-2 bg-[#182C61] text-white rounded-xl font-black text-sm hover:bg-[#182C61]/85"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -377,8 +806,49 @@ export default function DoctorCarePlans() {
         </div>
       ) : null}
 
+      {!onlyCatalog ? (
+      <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+        <h3 className="text-sm font-black text-[#182C61] uppercase tracking-wider mb-2">Patient Details</h3>
+        {patientDetailsError ? (
+          <p className="text-xs font-bold text-amber-700 mb-2">{patientDetailsError}</p>
+        ) : null}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+          <input
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+            placeholder="Patient name"
+            value={patientDetails.name || ''}
+            readOnly
+          />
+          <input
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+            placeholder="Patient phone"
+            value={patientDetails.phone || ''}
+            readOnly
+          />
+          <input
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+            placeholder="Patient age"
+            value={patientDetails.age || ''}
+            readOnly
+          />
+          <input
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+            placeholder="Patient gender"
+            value={patientDetails.gender || ''}
+            readOnly
+          />
+          <div className="flex items-center px-3 py-2 rounded-lg border border-slate-200 bg-white">
+            <span className="text-xs font-bold text-[#808e9b]">
+              {patientDetailsLoading ? 'Loading details...' : 'Details auto-filled for selected patient'}
+            </span>
+          </div>
+        </div>
+      </div>
+      ) : null}
+
+      {!onlyCatalog ? (
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-2">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => setActiveTab('create')}
@@ -395,19 +865,11 @@ export default function DoctorCarePlans() {
               activeTab === 'history' ? 'bg-[#182C61] text-white' : 'bg-slate-50 text-[#182C61] hover:bg-slate-100'
             }`}
           >
-            Maintain History
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('medicine-services')}
-            className={`px-4 py-2.5 rounded-xl text-sm font-black transition ${
-              activeTab === 'medicine-services' ? 'bg-[#182C61] text-white' : 'bg-slate-50 text-[#182C61] hover:bg-slate-100'
-            }`}
-          >
-            Medicine &amp; Services
+            History
           </button>
         </div>
       </div>
+      ) : null}
 
       {activeTab === 'medicine-services' ? (
       <>
@@ -488,6 +950,75 @@ export default function DoctorCarePlans() {
             <p className="text-xs font-bold text-[#808e9b]">No medicines in catalog yet.</p>
           ) : (
             <p className="text-xs font-bold text-[#808e9b]">{medicineCatalog.length} medicines available for care-plan selection.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-lg font-black text-[#182C61]">Pre-Visit Service Catalog</h2>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setIsServiceModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg border border-[#182C61] text-[#182C61] text-xs font-black hover:bg-[#182C61]/5"
+            >
+              View Services
+            </button>
+            <button
+              type="button"
+              onClick={loadServiceCatalog}
+              className="px-3 py-1.5 rounded-lg bg-[#182C61] text-white text-xs font-black hover:bg-[#182C61]/85"
+            >
+              Refresh Services
+            </button>
+          </div>
+        </div>
+
+        {serviceCatalogError ? (
+          <p className="text-xs font-bold text-amber-700">{serviceCatalogError}</p>
+        ) : null}
+
+        <form onSubmit={handleAddServiceToCatalog} className="grid grid-cols-1 md:grid-cols-4 gap-2">
+          <input
+            className="px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Service name"
+            value={newServiceCatalogItem.serviceName}
+            onChange={(e) => setNewServiceCatalogItem((prev) => ({ ...prev, serviceName: e.target.value }))}
+            required
+          />
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            className="px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Price (LKR)"
+            value={newServiceCatalogItem.price}
+            onChange={(e) => setNewServiceCatalogItem((prev) => ({ ...prev, price: e.target.value }))}
+            required
+          />
+          <input
+            className="px-3 py-2 rounded-lg border border-slate-200"
+            placeholder="Notes (optional)"
+            value={newServiceCatalogItem.notes}
+            onChange={(e) => setNewServiceCatalogItem((prev) => ({ ...prev, notes: e.target.value }))}
+          />
+          <button
+            type="submit"
+            disabled={addingServiceCatalog}
+            className="px-3 py-2 rounded-lg bg-[#eb2f06] text-white text-xs font-black disabled:opacity-60"
+          >
+            {addingServiceCatalog ? 'Adding...' : 'Add Service'}
+          </button>
+        </form>
+
+        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+          {serviceCatalogLoading ? (
+            <p className="text-xs font-bold text-[#808e9b]">Loading pre-visit services...</p>
+          ) : serviceCatalog.length === 0 ? (
+            <p className="text-xs font-bold text-[#808e9b]">No pre-visit services in catalog yet.</p>
+          ) : (
+            <p className="text-xs font-bold text-[#808e9b]">{serviceCatalog.length} services available. Click "View Services" to manage them.</p>
           )}
         </div>
       </div>
@@ -598,6 +1129,99 @@ export default function DoctorCarePlans() {
         </div>
       ) : null}
 
+      {isServiceModalOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/40 p-4 sm:p-8 overflow-y-auto">
+          <div className="max-w-4xl mx-auto bg-white rounded-2xl border-2 border-slate-100 shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-[#182C61]">Pre-Visit Services Catalog</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  cancelEditingServiceCatalog();
+                  setIsServiceModalOpen(false);
+                }}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            {serviceCatalogLoading ? (
+              <p className="text-sm font-bold text-[#808e9b]">Loading services...</p>
+            ) : serviceCatalog.length === 0 ? (
+              <p className="text-sm font-bold text-[#808e9b]">No services found.</p>
+            ) : (
+              <div className="space-y-3">
+                {serviceCatalog.map((item) => (
+                  <div key={item.id || item.serviceName} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    {editingServiceId === item.id ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          <input
+                            className="px-3 py-2 rounded-lg border border-slate-200"
+                            placeholder="Service name"
+                            value={editServiceCatalogForm.serviceName}
+                            onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, serviceName: e.target.value }))}
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="px-3 py-2 rounded-lg border border-slate-200"
+                            placeholder="Price (LKR)"
+                            value={editServiceCatalogForm.price}
+                            onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, price: e.target.value }))}
+                          />
+                          <input
+                            className="px-3 py-2 rounded-lg border border-slate-200"
+                            placeholder="Notes"
+                            value={editServiceCatalogForm.notes}
+                            onChange={(e) => setEditServiceCatalogForm((prev) => ({ ...prev, notes: e.target.value }))}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={updatingServiceCatalog}
+                            onClick={() => handleUpdateServiceCatalog(item.id)}
+                            className="px-3 py-1.5 rounded-lg bg-[#eb2f06] text-white text-xs font-black disabled:opacity-60"
+                          >
+                            {updatingServiceCatalog ? 'Saving...' : 'Save Update'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditingServiceCatalog}
+                            className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-black text-[#182C61]">{item.serviceName || 'Unnamed service'}</p>
+                          <p className="text-xs font-bold text-[#808e9b] mt-1">
+                            LKR {formatCurrency(item.price)} | {item.notes || 'No notes'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startEditingServiceCatalog(item)}
+                          className="px-3 py-1.5 rounded-lg border border-[#182C61] text-[#182C61] text-xs font-black hover:bg-[#182C61]/5"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       </>
       ) : null}
 
@@ -609,21 +1233,13 @@ export default function DoctorCarePlans() {
             <option key={item.id || item.name} value={item.name} />
           ))}
         </datalist>
+        <datalist id="service-catalog-options">
+          {serviceCatalog.map((item) => (
+            <option key={item.id || item.serviceName} value={item.serviceName} />
+          ))}
+        </datalist>
         <form onSubmit={handleCreate} className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <input
-              className="w-full px-4 py-2.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:border-[#182C61]"
-              placeholder="Patient ID"
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-              required
-            />
-            <input
-              className="w-full px-4 py-2.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:border-[#182C61]"
-              placeholder="Appointment ID (optional)"
-              value={appointmentId}
-              onChange={(e) => setAppointmentId(e.target.value)}
-            />
+          <div className="grid grid-cols-1 gap-3">
             <input
               type="number"
               min="1"
@@ -683,16 +1299,50 @@ export default function DoctorCarePlans() {
                 />
                 <input
                   className="px-3 py-2 rounded-lg border border-slate-200"
-                  placeholder="Dosage"
+                  list={`dosage-options-${index}`}
+                  placeholder="Dosage (select or type custom)"
                   value={medicine.dosage}
                   onChange={(e) => updateMedicine(index, 'dosage', e.target.value)}
                 />
+                <datalist id={`dosage-options-${index}`}>
+                  <option value="250mg" />
+                  <option value="500mg" />
+                  <option value="750mg" />
+                  <option value="1000mg (1g)" />
+                  <option value="250mg/5ml" />
+                  <option value="500mg/5ml" />
+                  <option value="100mg/ml" />
+                  <option value="2mg" />
+                  <option value="5mg" />
+                  <option value="10mg" />
+                  <option value="20mg" />
+                  <option value="25mg" />
+                  <option value="50mg" />
+                  <option value="100mg" />
+                </datalist>
                 <input
                   className="px-3 py-2 rounded-lg border border-slate-200"
-                  placeholder="Frequency"
+                  list={`frequency-options-${index}`}
+                  placeholder="Frequency (select or type custom)"
                   value={medicine.frequency}
                   onChange={(e) => updateMedicine(index, 'frequency', e.target.value)}
                 />
+                <datalist id={`frequency-options-${index}`}>
+                  <option value="Once daily" />
+                  <option value="Twice daily (BD)" />
+                  <option value="Three times daily (TDS)" />
+                  <option value="Four times daily (QID)" />
+                  <option value="Every 6 hours" />
+                  <option value="Every 8 hours" />
+                  <option value="Every 12 hours" />
+                  <option value="Before meals" />
+                  <option value="After meals" />
+                  <option value="With meals" />
+                  <option value="At bedtime" />
+                  <option value="As needed" />
+                  <option value="Once weekly" />
+                  <option value="Twice weekly" />
+                </datalist>
                 <input
                   type="number"
                   min="1"
@@ -749,12 +1399,23 @@ export default function DoctorCarePlans() {
             </div>
 
             {preVisitServices.map((service, index) => (
-              <div key={`service-${index}`} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div key={`service-${index}`} className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <input
                   className="px-3 py-2 rounded-lg border border-slate-200"
-                  placeholder="Service name"
+                  list="service-catalog-options"
+                  placeholder="Service name (choose from catalog or type)"
                   value={service.serviceName}
-                  onChange={(e) => updateService(index, 'serviceName', e.target.value)}
+                  onChange={(e) => updateServiceName(index, e.target.value)}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-700"
+                  placeholder="Auto price (LKR)"
+                  value={service.price}
+                  readOnly
                 />
                 <div className="flex gap-2">
                   <input
@@ -772,8 +1433,27 @@ export default function DoctorCarePlans() {
                     <TrashIcon className="h-4 w-4" />
                   </button>
                 </div>
+                </div>
+                <p className="text-xs font-black text-[#182C61]">
+                  Line Service Cost: LKR {formatCurrency(parsePrice(service.price))}
+                </p>
+                {!service.price ? (
+                  <p className="text-[11px] font-bold text-amber-700">
+                    Price not found in service catalog for this service name. Select a catalog service to auto-fill.
+                  </p>
+                ) : null}
               </div>
             ))}
+
+            <div className="rounded-xl border border-[#182C61]/20 bg-[#182C61]/5 p-3 flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-[#182C61]">Total Service Cost</span>
+              <span className="text-base font-black text-[#182C61]">LKR {formatCurrency(totalServiceCost)}</span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[#eb2f06]/20 bg-[#eb2f06]/5 p-3 flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider text-[#eb2f06]">Estimated Grand Total</span>
+            <span className="text-lg font-black text-[#eb2f06]">LKR {formatCurrency(grandTotalCost)}</span>
           </div>
 
           <div>
@@ -792,13 +1472,8 @@ export default function DoctorCarePlans() {
       {activeTab === 'history' ? (
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-5 space-y-5">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-          <h2 className="text-lg font-black text-[#182C61]">Maintain History</h2>
-          <input
-            className="px-4 py-2.5 bg-slate-50 border-2 border-transparent rounded-xl focus:outline-none focus:border-[#182C61] max-w-sm"
-            placeholder="Filter by patient ID"
-            value={historyPatientId}
-            onChange={(e) => setHistoryPatientId(e.target.value)}
-          />
+          <h2 className="text-lg font-black text-[#182C61]">Appointment History</h2>
+          <p className="text-sm font-bold text-[#808e9b]">Click an appointment card to view medicines and services</p>
         </div>
 
         <div className="rounded-2xl border border-slate-100 p-4">
@@ -811,19 +1486,81 @@ export default function DoctorCarePlans() {
             <div className="space-y-3">
               {plans.map((plan) => (
                 <div key={plan.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <ClipboardDocumentListIcon className="h-5 w-5 text-[#182C61]" />
-                      <p className="text-sm font-black text-[#182C61]">Patient: {plan.patientId || 'N/A'}</p>
-                    </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
-                      {plan.status || 'ACTIVE'}
-                    </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedPlanId((prev) => (prev === String(plan.id) ? '' : String(plan.id)))}
+                      className="flex-1 text-left"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <ClipboardDocumentListIcon className="h-5 w-5 text-[#182C61]" />
+                          <p className="text-sm font-black text-[#182C61]">Appointment: {plan.appointmentId || 'N/A'}</p>
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-[#182C61]/10 text-[#182C61]">
+                          {plan.status || 'ACTIVE'}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-[#808e9b] mt-2">Date &amp; Time: {getPlanTimelineText(plan)}</p>
+                      <p className="text-xs font-black text-[#182C61] mt-1">Total Bill: LKR {formatCurrency(plan.totalBill)}</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      title="Digital Prescription"
+                      aria-label="Digital Prescription"
+                      onClick={() => openDigitalPrescription(plan)}
+                      className="p-2 rounded-lg border border-[#182C61]/30 text-[#182C61] hover:bg-[#182C61]/5"
+                    >
+                      <DocumentTextIcon className="h-4 w-4" />
+                    </button>
                   </div>
-                  <p className="text-xs font-bold text-[#808e9b] mt-2">Appointment: {plan.appointmentId || 'N/A'}</p>
-                  <p className="text-xs font-bold text-[#808e9b] mt-1">Created: {formatDate(plan.createdAt)}</p>
-                  <p className="text-xs font-black text-[#182C61] mt-1">Total Bill: LKR {formatCurrency(plan.totalBill)}</p>
-                  <p className="text-xs font-bold text-[#1e272e] mt-2 whitespace-pre-wrap">{plan.consultationNotes || 'No notes'}</p>
+
+                  {expandedPlanId === String(plan.id) ? (
+                    <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
+                      <p className="text-xs font-bold text-[#1e272e] whitespace-pre-wrap">{plan.consultationNotes || 'No notes'}</p>
+
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-[#182C61] mb-2">
+                          Medicines ({Array.isArray(plan.medicines) ? plan.medicines.length : 0})
+                        </h4>
+                        {!Array.isArray(plan.medicines) || plan.medicines.length === 0 ? (
+                          <p className="text-xs font-bold text-[#808e9b]">No medicines for this appointment.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {plan.medicines.map((medicine, index) => (
+                              <div key={`${plan.id}-med-${index}`} className="p-2 rounded-lg bg-white border border-slate-200">
+                                <p className="text-sm font-black text-[#182C61]">{medicine.medicineName || 'Medicine'}</p>
+                                <p className="text-xs font-bold text-[#808e9b] mt-1">
+                                  {medicine.dosage || 'N/A'} | {medicine.frequency || 'N/A'} | {medicine.durationDays || 'N/A'} days
+                                </p>
+                                <p className="text-xs font-semibold text-[#1e272e] mt-1">{medicine.instructions || 'No instructions'}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-[#182C61] mb-2">
+                          Pre-Visit Services ({Array.isArray(plan.preVisitServices) ? plan.preVisitServices.length : 0})
+                        </h4>
+                        {!Array.isArray(plan.preVisitServices) || plan.preVisitServices.length === 0 ? (
+                          <p className="text-xs font-bold text-[#808e9b]">No pre-visit services for this appointment.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {plan.preVisitServices.map((service, index) => (
+                              <div key={`${plan.id}-service-${index}`} className="p-2 rounded-lg bg-white border border-slate-200">
+                                <p className="text-sm font-black text-[#182C61]">{service.serviceName || 'Service'}</p>
+                                <p className="text-xs font-bold text-[#808e9b] mt-1">LKR {formatCurrency(service.price)}</p>
+                                <p className="text-xs font-semibold text-[#1e272e] mt-1">{service.notes || 'No notes'}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
