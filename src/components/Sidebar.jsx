@@ -35,6 +35,7 @@ const navConfigs = {
     { name: 'Care Plans', href: '/dashboard/care-plans', icon: ClipboardDocumentListIcon },
     { name: 'Consultations', href: '/dashboard/consultations', icon: VideoCameraIcon },
     { name: 'Bill Requests', href: '/dashboard/bill-requests', icon: CreditCardIcon },
+    { name: 'Notifications', href: '/dashboard/notifications', icon: BellIcon },
     { name: 'Profile', href: '/dashboard/profile', icon: UserCircleIcon },
   ],
   Admin: [
