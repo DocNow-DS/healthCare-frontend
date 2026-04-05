@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { API } from '../config/api';
 import { CalendarDaysIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
@@ -19,6 +18,10 @@ export default function DoctorAppointments() {
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState('');
   const [appointments, setAppointments] = useState([]);
+  const [sessionLinksByAppointment, setSessionLinksByAppointment] = useState({});
+  const [generatingByAppointment, setGeneratingByAppointment] = useState({});
+  const [actingByAppointment, setActingByAppointment] = useState({});
+  const [actionMessage, setActionMessage] = useState('');
 
   const loadAppointments = async () => {
     if (!doctorId) return;
@@ -46,6 +49,72 @@ export default function DoctorAppointments() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorId]);
 
+  const handleGenerateSessionLink = async (appointment) => {
+    if (!appointment?.id) {
+      setActionMessage('Missing appointment id.');
+      return;
+    }
+    if (!doctorId) {
+      setActionMessage('Missing doctor id. Please login again.');
+      return;
+    }
+
+    const appointmentId = String(appointment.id);
+    setActionMessage('');
+    setGeneratingByAppointment((prev) => ({ ...prev, [appointmentId]: true }));
+
+    try {
+      const created = await API.telemedSessions.createOrGetByAppointment(appointmentId, {
+        doctorId,
+        patientId: appointment.patientId,
+      });
+      const link = created?.sessionUrl || created?.jitsiUrl || '';
+      if (!link) {
+        throw new Error('Session created but no link returned');
+      }
+      setSessionLinksByAppointment((prev) => ({ ...prev, [appointmentId]: link }));
+      setActionMessage(`Session link generated for appointment ${appointmentId}.`);
+    } catch (e) {
+      setActionMessage(e?.message || 'Failed to generate session link');
+    } finally {
+      setGeneratingByAppointment((prev) => ({ ...prev, [appointmentId]: false }));
+    }
+  };
+
+  const handleDoctorAction = async (appointment, action) => {
+    const appointmentId = String(appointment?.id || '');
+    if (!appointmentId || !doctorId) {
+      setActionMessage('Missing appointment or doctor id.');
+      return;
+    }
+
+    setActionMessage('');
+    setActingByAppointment((prev) => ({ ...prev, [appointmentId]: true }));
+    try {
+      const payload = { action, message: action === 'ACCEPT' ? 'Approved by doctor' : 'Declined by doctor' };
+      await API.doctorAppointments.action(doctorId, appointmentId, payload);
+      setActionMessage(
+        action === 'ACCEPT'
+          ? `Appointment ${appointmentId} approved. Patient can now see approved status.`
+          : `Appointment ${appointmentId} declined.`,
+      );
+      await loadAppointments();
+    } catch (e) {
+      setActionMessage(e?.message || `Failed to ${action.toLowerCase()} appointment`);
+    } finally {
+      setActingByAppointment((prev) => ({ ...prev, [appointmentId]: false }));
+    }
+  };
+
+  const handleCopyLink = async (link) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setActionMessage('Session link copied to clipboard.');
+    } catch {
+      setActionMessage('Could not copy link automatically. Please copy it manually.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -66,6 +135,12 @@ export default function DoctorAppointments() {
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
           <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5" />
           <span className="text-sm font-semibold text-amber-800">{warning}</span>
+        </div>
+      ) : null}
+
+      {actionMessage ? (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+          <span className="text-sm font-semibold text-blue-800">{actionMessage}</span>
         </div>
       ) : null}
 
@@ -91,10 +166,68 @@ export default function DoctorAppointments() {
                   {a.notes ? (
                     <p className="text-xs text-[#808e9b] mt-2 line-clamp-2">{a.notes}</p>
                   ) : null}
+
+                  {sessionLinksByAppointment[a.id] ? (
+                    <a
+                      href={sessionLinksByAppointment[a.id]}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-block mt-2 text-xs font-black text-[#182C61] hover:underline"
+                    >
+                      Open session link
+                    </a>
+                  ) : null}
                 </div>
-                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[#182C61]">
-                  <CalendarDaysIcon className="h-4 w-4" />
-                  {String(a.status || '—').toUpperCase()}
+
+                <div className="flex flex-col items-start sm:items-end gap-2">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[#182C61]">
+                    <CalendarDaysIcon className="h-4 w-4" />
+                    {String(a.status || '—').toUpperCase()}
+                  </div>
+
+                  {isPendingApproval(a) ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDoctorAction(a, 'ACCEPT')}
+                        disabled={Boolean(actingByAppointment[a.id])}
+                        className="px-3 py-1.5 rounded-lg text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        {actingByAppointment[a.id] ? 'Saving...' : 'Approve'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDoctorAction(a, 'DECLINE')}
+                        disabled={Boolean(actingByAppointment[a.id])}
+                        className="px-3 py-1.5 rounded-lg text-xs font-black border border-rose-600 text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {canGenerateSession(a) ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleGenerateSessionLink(a)}
+                        disabled={Boolean(generatingByAppointment[a.id]) || Boolean(actingByAppointment[a.id])}
+                        className="px-3 py-1.5 rounded-lg text-xs font-black bg-[#182C61] text-white hover:bg-[#182C61]/85 disabled:opacity-60"
+                      >
+                        {generatingByAppointment[a.id] ? 'Generating...' : 'Generate Link'}
+                      </button>
+
+                      {sessionLinksByAppointment[a.id] ? (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyLink(sessionLinksByAppointment[a.id])}
+                          className="px-3 py-1.5 rounded-lg text-xs font-black border border-[#182C61] text-[#182C61] hover:bg-[#182C61]/5"
+                        >
+                          Copy Link
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -110,4 +243,14 @@ function formatAppointmentTime(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleString();
+}
+
+function canGenerateSession(appointment) {
+  const status = String(appointment?.status || '').toUpperCase();
+  return status === 'ACCEPTED';
+}
+
+function isPendingApproval(appointment) {
+  const status = String(appointment?.status || '').toUpperCase();
+  return status === 'PENDING' || status === 'RESCHEDULE_REQUESTED';
 }

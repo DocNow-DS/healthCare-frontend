@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { API } from '../config/api';
 import { UserCircleIcon, ExclamationTriangleIcon, CheckCircleIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import UploadMedicalDocument from '../components/UploadMedicalDocument';
 
 const readAuthUser = () => {
   try {
@@ -18,6 +19,10 @@ export default function PatientProfile() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [reportTab, setReportTab] = useState('submit');
+  const [reports, setReports] = useState([]);
+  const [prescriptions, setPrescriptions] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -34,14 +39,14 @@ export default function PatientProfile() {
     setError('');
     try {
       const authUser = readAuthUser();
-      if (!authUser?.id) {
+      if (!authUser) {
         setError('User not authenticated');
         return;
       }
 
-      // Get fresh user data from API
-      const userData = await API.admin.getAllUsers?.() || [];
-      const currentUser = userData.find(u => u.id === authUser.id) || authUser;
+      // Prefer patient profile endpoint; fallback to local auth user if backend omits optional fields.
+      const profile = await API.patients.getProfile();
+      const currentUser = { ...(authUser || {}), ...(profile || {}) };
       
       setUser(currentUser);
       setFormData({
@@ -60,8 +65,26 @@ export default function PatientProfile() {
     }
   };
 
+  const loadReports = async () => {
+    setReportsLoading(true);
+    try {
+      const [reportData, prescriptionData] = await Promise.all([
+        API.patients.getReports(),
+        API.patients.getPrescriptions(),
+      ]);
+      setReports(Array.isArray(reportData) ? reportData : []);
+      setPrescriptions(Array.isArray(prescriptionData) ? prescriptionData : []);
+    } catch {
+      setReports([]);
+      setPrescriptions([]);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadProfile();
+    loadReports();
   }, []);
 
   const handleChange = (e) => {
@@ -76,14 +99,7 @@ export default function PatientProfile() {
     setSuccess('');
 
     try {
-      const authUser = readAuthUser();
-      if (!authUser?.id) {
-        setError('User not authenticated');
-        return;
-      }
-
-      // Update user via admin API (update user endpoint)
-      await API.admin.updateUser(authUser.id, {
+      await API.patients.updateProfile({
         name: formData.name,
         phone: formData.phone,
         age: formData.age ? parseInt(formData.age) : null,
@@ -92,7 +108,7 @@ export default function PatientProfile() {
         medicalHistory: formData.medicalHistory
       });
 
-      // Update local storage
+      const authUser = readAuthUser() || {};
       const updatedUser = { ...authUser, ...formData, age: formData.age ? parseInt(formData.age) : null };
       localStorage.setItem('auth_user', JSON.stringify(updatedUser));
 
@@ -104,6 +120,15 @@ export default function PatientProfile() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleReportUpload = async (file, description) => {
+    setError('');
+    setSuccess('');
+    await API.patients.uploadReport(file, description);
+    setSuccess('Medical report submitted successfully.');
+    setReportTab('view');
+    await loadReports();
   };
 
   if (loading) {
@@ -302,6 +327,14 @@ export default function PatientProfile() {
                   {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
                 </p>
               </div>
+              <div className="p-4 bg-slate-50 rounded-xl">
+                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Patient ID</p>
+                <p className="text-sm font-bold text-[#182C61] break-all">{user?.id || user?.userId || 'Not available'}</p>
+              </div>
+              <div className="p-4 bg-slate-50 rounded-xl">
+                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Username</p>
+                <p className="text-sm font-bold text-[#182C61]">{user?.username || 'Not provided'}</p>
+              </div>
               <div className="md:col-span-2 p-4 bg-slate-50 rounded-xl">
                 <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Address</p>
                 <p className="text-sm font-bold text-[#182C61]">{user?.address || 'Not provided'}</p>
@@ -313,6 +346,110 @@ export default function PatientProfile() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="bg-white border-2 border-slate-50 rounded-2xl p-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-black text-[#182C61]">Medical Reports & Prescriptions</h2>
+          <p className="text-[#808e9b] mt-1 text-sm font-bold">View all uploaded reports and available prescriptions in one place.</p>
+        </div>
+
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setReportTab('submit')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-black border ${
+              reportTab === 'submit'
+                ? 'bg-[#182C61] text-white border-[#182C61]'
+                : 'bg-white text-[#182C61] border-[#182C61]/30 hover:bg-[#182C61]/5'
+            }`}
+          >
+            Submit Report
+          </button>
+          <button
+            type="button"
+            onClick={() => setReportTab('view')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-black border ${
+              reportTab === 'view'
+                ? 'bg-[#182C61] text-white border-[#182C61]'
+                : 'bg-white text-[#182C61] border-[#182C61]/30 hover:bg-[#182C61]/5'
+            }`}
+          >
+            View Reports
+          </button>
+        </div>
+
+        {reportTab === 'submit' ? (
+          <UploadMedicalDocument onUpload={handleReportUpload} />
+        ) : reportsLoading ? (
+          <p className="text-sm font-bold text-[#808e9b]">Loading reports...</p>
+        ) : reports.length === 0 && prescriptions.length === 0 ? (
+          <p className="text-sm font-bold text-[#808e9b]">No uploaded reports or prescriptions yet.</p>
+        ) : (
+          <div className="space-y-5">
+            <div>
+              <h3 className="text-sm font-black text-[#182C61] uppercase tracking-wider mb-3">Uploaded Reports ({reports.length})</h3>
+              {reports.length === 0 ? (
+                <p className="text-sm font-bold text-[#808e9b]">No uploaded reports yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {reports.map((item, index) => (
+                    <div key={item.id || index} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                      <p className="text-sm font-black text-[#182C61]">{item.fileName || 'Medical Report'}</p>
+                      <p className="text-xs font-bold text-[#808e9b] mt-1">{item.description || 'No description provided'}</p>
+                      {item.uploadDate || item.createdAt ? (
+                        <p className="text-xs font-bold text-[#808e9b] mt-1">
+                          Uploaded: {new Date(item.uploadDate || item.createdAt).toLocaleString()}
+                        </p>
+                      ) : null}
+                      {(item.filePath || item.fileUrl || item.downloadUrl)?.startsWith?.('http') ? (
+                        <a
+                          href={item.filePath || item.fileUrl || item.downloadUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-block mt-2 text-xs font-black text-[#182C61] hover:underline"
+                        >
+                          Open document
+                        </a>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h3 className="text-sm font-black text-[#182C61] uppercase tracking-wider mb-3">Prescriptions ({prescriptions.length})</h3>
+              {prescriptions.length === 0 ? (
+                <p className="text-sm font-bold text-[#808e9b]">No prescriptions available.</p>
+              ) : (
+                <div className="space-y-3">
+                  {prescriptions.map((item, index) => (
+                    <div key={item.id || item.prescriptionId || index} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                      <p className="text-sm font-black text-[#182C61]">{item.title || item.fileName || 'Prescription'}</p>
+                      <p className="text-xs font-bold text-[#808e9b] mt-1">{item.description || item.notes || 'No details provided'}</p>
+                      {item.createdAt || item.uploadDate ? (
+                        <p className="text-xs font-bold text-[#808e9b] mt-1">
+                          Date: {new Date(item.createdAt || item.uploadDate).toLocaleString()}
+                        </p>
+                      ) : null}
+                      {(item.fileUrl || item.downloadUrl || item.filePath)?.startsWith?.('http') ? (
+                        <a
+                          href={item.fileUrl || item.downloadUrl || item.filePath}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-block mt-2 text-xs font-black text-[#182C61] hover:underline"
+                        >
+                          Open prescription
+                        </a>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

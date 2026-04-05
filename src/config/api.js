@@ -61,6 +61,21 @@ const getAuthToken = () => {
   return token;
 };
 
+const readAuthUser = () => {
+  try {
+    const raw = localStorage.getItem('auth_user');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const getCurrentPatientId = () => {
+  const user = readAuthUser();
+  const id = user?.id || user?.userId || user?.username || user?.email;
+  return id != null ? String(id).trim() : '';
+};
+
 // Utility to clear invalid tokens
 export const clearInvalidTokens = () => {
   localStorage.removeItem('auth_token');
@@ -71,10 +86,14 @@ export const clearInvalidTokens = () => {
 // Generic API client with authentication
 const apiClient = async (url, options = {}) => {
   const token = getAuthToken();
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = {
-    'Content-Type': 'application/json',
     ...options.headers,
   };
+
+  if (!isFormData && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   // Only add Authorization header if token exists and is valid
   if (token) {
@@ -87,21 +106,25 @@ const apiClient = async (url, options = {}) => {
   };
 
   try {
+    // Dev debug: log request details before sending
+    if (import.meta?.env?.DEV) {
+      // eslint-disable-next-line no-console
+      console.log('[API] REQUEST', { url, config: { method: config.method || 'GET', headers: config.headers } });
+    }
     const response = await fetch(url, config);
+    const contentType = response.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
     const text = await response.text();
     let payload = null;
     if (text) {
       try {
-        payload = JSON.parse(text);
+        payload = isJson ? JSON.parse(text) : text;
       } catch {
-        payload = null;
+        payload = text;
       }
     }
 
     if (!response.ok) {
-      const contentType = response.headers.get('content-type') || '';
-      const isJson = contentType.includes('application/json');
-      const payload = isJson ? await response.json() : await response.text();
       const backendMessage = typeof payload === 'string'
         ? payload
         : payload?.message || payload?.error || response.statusText;
@@ -117,8 +140,24 @@ const apiClient = async (url, options = {}) => {
       throw err;
     }
 
-    return payload
+    // Dev debug: log successful responses
+    if (import.meta?.env?.DEV) {
+      // eslint-disable-next-line no-console
+      console.log('[API] RESPONSE', { url, status: response.status, payload });
+    }
+
+    return payload;
   } catch (error) {
+    const message = String(error?.message || '');
+    if (
+      error?.name === 'TypeError' ||
+      /NetworkError|Failed to fetch|fetch resource/i.test(message)
+    ) {
+      const networkErr = new Error(`Network error calling ${url}. The backend service may be down or blocked by CORS.`);
+      networkErr.cause = error;
+      console.error('API Error:', networkErr);
+      throw networkErr;
+    }
     console.error('API Error:', error);
     throw error;
   }
@@ -145,13 +184,26 @@ export const API = {
   // Patient Management Endpoints
   patients: {
     getAll: () => apiClient(`${services.patient}/api/patient/all`),
+    getById: (id) => apiClient(`${services.patient}/api/patient/${encodeURIComponent(String(id))}`),
     getProfile: () => apiClient(`${services.patient}/api/patient/profile`),
     updateProfile: (data) => apiClient(`${services.patient}/api/patient/profile`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
     getReports: () => apiClient(`${services.patient}/api/patient/reports`),
+    getReportsByPatientId: (id) => apiClient(`${services.patient}/api/patient/${encodeURIComponent(String(id))}/reports`),
+    uploadReport: (file, description = '') => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('description', description);
+      return apiClient(`${services.patient}/api/patient/reports`, {
+        method: 'POST',
+        body: formData,
+      });
+    },
     getPrescriptions: () => apiClient(`${services.patient}/api/patient/prescriptions`),
+    getPrescriptionsByPatientId: (id) =>
+      apiClient(`${services.patient}/api/patient/${encodeURIComponent(String(id))}/prescriptions`),
   },
 
   // Doctor Management Endpoints
@@ -311,16 +363,41 @@ export const API = {
     getPaymentByConsultation: (consultationId) => apiClient(`${services.payment}/api/v1/payments/consultation/${consultationId}`),
     // Get payment by Stripe checkout session ID
     getPaymentBySession: (sessionId) => apiClient(`${services.payment}/api/v1/payments/session/${sessionId}`),
+    // Confirm payment status with provider after redirect
+    confirmPaymentSession: (sessionId) => apiClient(`${services.payment}/api/v1/payments/session/${sessionId}/confirm`, {
+      method: 'POST',
+    }),
     // Get all payments for current patient
     getMyPayments: () => apiClient(`${services.payment}/api/v1/payments/patient/my-payments`),
   },
 
   patientAppointments: {
     /** Requires patient JWT; returns appointments for the authenticated user. */
-    list: () =>
-      apiClient(`${services.appointment}/api/patient/appointments`, {
-        method: 'GET',
-      }),
+    list: async () => {
+      try {
+        return await apiClient(`${services.appointment}/api/patient/appointments`, {
+          method: 'GET',
+        });
+      } catch (error) {
+        const patientId = getCurrentPatientId();
+        if (!patientId) throw error;
+
+        // Fallback: derive appointment-like rows from telemed sessions when appointment service is unavailable.
+        const sessions = await telemedSessionsClient(`/patient/${encodeURIComponent(patientId)}/sessions`);
+        const safeSessions = Array.isArray(sessions) ? sessions : [];
+        return safeSessions.map((s) => ({
+          id: s?.id || s?.consultationId || s?.appointmentId,
+          doctorId: s?.doctorId || '',
+          startTime: s?.startedAt || s?.createdAt || null,
+          endTime: s?.endedAt || null,
+          consultationType: s?.type || 'ONLINE',
+          status: String(s?.status || 'SCHEDULED').toUpperCase(),
+          notes: s?.notes || '',
+          progressPercent: typeof s?.progressPercent === 'number' ? s.progressPercent : 0,
+          progressLabel: s?.progressLabel || '',
+        }));
+      }
+    },
     cancel: (appointmentId) =>
       apiClient(
         `${services.appointment}/api/patient/appointments/${encodeURIComponent(String(appointmentId))}/cancel`,
@@ -352,17 +429,64 @@ export const API = {
         },
       })
     },
+    action: (doctorId, appointmentId, payload) =>
+      apiClient(
+        `${services.appointment}/api/doctor/appointments/${encodeURIComponent(String(appointmentId))}/action`,
+        {
+          method: 'POST',
+          headers: {
+            'X-Doctor-Id': String(doctorId),
+          },
+          body: JSON.stringify(payload),
+        },
+      ),
+    accept: (doctorId, appointmentId, message = '') =>
+      apiClient(
+        `${services.appointment}/api/doctor/appointments/${encodeURIComponent(String(appointmentId))}/action`,
+        {
+          method: 'POST',
+          headers: {
+            'X-Doctor-Id': String(doctorId),
+          },
+          body: JSON.stringify({ action: 'ACCEPT', message }),
+        },
+      ),
+    decline: (doctorId, appointmentId, message = '') =>
+      apiClient(
+        `${services.appointment}/api/doctor/appointments/${encodeURIComponent(String(appointmentId))}/action`,
+        {
+          method: 'POST',
+          headers: {
+            'X-Doctor-Id': String(doctorId),
+          },
+          body: JSON.stringify({ action: 'DECLINE', message }),
+        },
+      ),
   },
 
   /** Appointment service: doctor directory for booking (optional `specialty` query). */
   patientBooking: {
-    listDoctors: (specialty) => {
+    listDoctors: async (specialty) => {
       const base = `${services.appointment}/api/patient/booking/doctors`
       const q =
         typeof specialty === 'string' && specialty.trim().length > 0
           ? `?specialty=${encodeURIComponent(specialty.trim())}`
           : ''
-      return apiClient(`${base}${q}`, { method: 'GET' })
+      try {
+        return await apiClient(`${base}${q}`, { method: 'GET' })
+      } catch (error) {
+        // Fallback for patient doctor search when appointment service is unavailable.
+        const doctors = await apiClient(`${services.doctor}/api/doctors`, { method: 'GET' })
+        const safe = Array.isArray(doctors) ? doctors : []
+        if (typeof specialty === 'string' && specialty.trim().length > 0) {
+          const wanted = specialty.trim().toLowerCase()
+          return safe.filter((d) => {
+            const spec = String(d?.specialty || d?.specialization || '').toLowerCase()
+            return spec === wanted
+          })
+        }
+        return safe
+      }
     },
   },
 

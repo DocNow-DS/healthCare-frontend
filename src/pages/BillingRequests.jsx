@@ -26,8 +26,23 @@ const formatMoney = (value) => {
 };
 
 const parseBillAmount = (bill) => {
-  const parsed = Number(bill?.totalBill);
-  return Number.isFinite(parsed) ? parsed : 0;
+  const direct = Number(bill?.totalBill);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const altFields = [bill?.billAmount, bill?.amount, bill?.totalAmount];
+  for (const value of altFields) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+
+  const medicinesTotal = Array.isArray(bill?.medicines)
+    ? bill.medicines.reduce((sum, med) => {
+        const price = Number(med?.price);
+        return Number.isFinite(price) ? sum + price : sum;
+      }, 0)
+    : 0;
+
+  return medicinesTotal > 0 ? medicinesTotal : 0;
 };
 
 const normalizeStatus = (status) => String(status || '').toUpperCase();
@@ -43,6 +58,7 @@ export default function BillingRequests() {
   const [tab, setTab] = useState('active');
   const [bills, setBills] = useState([]);
   const [paymentsByConsultation, setPaymentsByConsultation] = useState({});
+  const [payingBillId, setPayingBillId] = useState('');
 
   const loadBillingData = async () => {
     if (!userId) {
@@ -105,6 +121,31 @@ export default function BillingRequests() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, role]);
 
+  useEffect(() => {
+    if (role !== 'PATIENT') return undefined;
+
+    const intervalId = setInterval(() => {
+      loadBillingData();
+    }, 8000);
+
+    const handleFocus = () => loadBillingData();
+    const handleStorage = (event) => {
+      if (event.key === 'billing_refresh_ts') {
+        loadBillingData();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorage);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+
   const enrichedBills = useMemo(() => {
     return bills.map((bill) => {
       const billId = String(bill?.id || '');
@@ -132,18 +173,26 @@ export default function BillingRequests() {
     if (role !== 'PATIENT') return;
 
     const consultationId = bill?.id;
-    const amount = parseBillAmount(bill);
-    if (!consultationId || amount <= 0) {
-      setWarning('This bill cannot be paid yet because amount is invalid.');
+    const rawAmount = parseBillAmount(bill);
+    if (!consultationId) {
+      setWarning('This bill cannot be paid yet because consultation id is missing.');
       return;
     }
 
-    const params = new URLSearchParams({
-      consultationId: String(consultationId),
-      amount: String(Math.round(amount)),
-      doctorName: String(bill?.doctorId || 'Doctor'),
+    const amount = Math.max(1, Math.round(rawAmount || 0));
+    if (rawAmount <= 0) {
+      setWarning('Bill amount was missing, using minimum payable amount. Please verify with your doctor.');
+    }
+
+    const billId = String(bill?.id || '');
+    setPayingBillId(billId);
+    navigate('/dashboard/payment/checkout', {
+      state: {
+        consultationId: String(consultationId),
+        amount,
+        doctorName: String(bill?.doctorId || 'Doctor'),
+      },
     });
-    navigate(`/dashboard/payment/checkout?${params.toString()}`);
   };
 
   const renderList = (list) => {
@@ -153,14 +202,23 @@ export default function BillingRequests() {
     return (
       <div className="space-y-3">
         {list.map((bill) => (
-          <div key={bill.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+          <div key={bill.id} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div>
                 <p className="text-sm font-black text-primary-500">Bill ID: {String(bill?.id || '').slice(-10).toUpperCase()}</p>
                 <p className="text-xs font-bold text-[#808e9b] mt-1">Patient: {bill?.patientId || 'N/A'}</p>
                 <p className="text-xs font-bold text-[#808e9b] mt-1">Doctor: {bill?.doctorId || 'N/A'}</p>
                 <p className="text-xs font-bold text-[#808e9b] mt-1">Created: {bill?.createdAt ? new Date(bill.createdAt).toLocaleString() : 'N/A'}</p>
-                <p className="text-xs font-black text-primary-500 mt-1">Status: {bill.isPaid ? 'PAID' : 'PENDING PAYMENT'}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black ${bill.isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                    {bill.isPaid ? 'PAID' : 'ACTIVE'}
+                  </span>
+                  {!bill.isPaid ? (
+                    <span className="inline-flex px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-100 text-blue-800">
+                      Gateway Ready
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="text-right">
                 <p className="text-lg font-black text-primary-500">LKR {formatMoney(parseBillAmount(bill))}</p>
@@ -172,9 +230,10 @@ export default function BillingRequests() {
                   <button
                     type="button"
                     onClick={() => handlePayNow(bill)}
-                    className="mt-2 px-3 py-1.5 rounded-lg bg-accent-red text-white text-xs font-black hover:bg-accent-red/90"
+                    disabled={payingBillId === String(bill?.id || '')}
+                    className="mt-2 px-4 py-2 rounded-lg bg-accent-red text-white text-xs font-black hover:bg-accent-red/90 disabled:opacity-60"
                   >
-                    Pay via Payment Service
+                    {payingBillId === String(bill?.id || '') ? 'Opening...' : 'Pay Now'}
                   </button>
                 ) : (
                   <span className="inline-flex mt-2 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-800">

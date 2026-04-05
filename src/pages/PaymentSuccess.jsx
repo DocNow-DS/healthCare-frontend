@@ -7,6 +7,7 @@ export default function PaymentSuccess() {
   const location = useLocation();
   const [paymentDetails, setPaymentDetails] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [statusMessage, setStatusMessage] = useState('Verifying your payment...');
 
   // Get session_id from URL query params
   const queryParams = new URLSearchParams(location.search);
@@ -34,15 +35,43 @@ export default function PaymentSuccess() {
   }, [sessionId]);
 
   const verifyPayment = async () => {
+    const maxAttempts = 12;
+    const delayMs = 2000;
+
     try {
-      const response = await API.payment.getPaymentBySession(sessionId);
-      setPaymentDetails(response);
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        let response;
+        try {
+          response = await API.payment.confirmPaymentSession(sessionId);
+        } catch {
+          response = await API.payment.getPaymentBySession(sessionId);
+        }
+        setPaymentDetails(response);
+
+        const status = String(response?.status || '').toUpperCase();
+        if (status === 'COMPLETED') {
+          setStatusMessage('Payment confirmed. Your bill is now marked inactive.');
+          localStorage.setItem('billing_refresh_ts', String(Date.now()));
+          return;
+        }
+
+        if (status === 'FAILED' || status === 'EXPIRED') {
+          setStatusMessage(`Payment ${status.toLowerCase()}. Please try again.`);
+          return;
+        }
+
+        setStatusMessage(`Payment is processing (${attempt}/${maxAttempts})...`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+
+      setStatusMessage('Payment is still processing. Please open Bill Requests and click Refresh in a few seconds.');
     } catch (error) {
       console.error('Error verifying payment:', error);
       setPaymentDetails({
         stripeSessionId: sessionId,
         status: 'UNKNOWN',
       });
+      setStatusMessage('Could not verify payment status right now. Please refresh Bill Requests.');
     } finally {
       setLoading(false);
     }
@@ -53,7 +82,7 @@ export default function PaymentSuccess() {
       <section className="page">
         <div className="max-w-2xl mx-auto text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
-          <h2 className="text-xl font-semibold text-gray-900">Verifying your payment...</h2>
+          <h2 className="text-xl font-semibold text-gray-900">{statusMessage}</h2>
         </div>
       </section>
     );
@@ -79,7 +108,7 @@ export default function PaymentSuccess() {
               </svg>
             </div>
             <h1 className="text-3xl font-bold text-white mb-2">Payment Successful!</h1>
-            <p className="text-green-100">Your consultation has been confirmed</p>
+            <p className="text-green-100">{statusMessage}</p>
           </div>
 
           <div className="p-6">
