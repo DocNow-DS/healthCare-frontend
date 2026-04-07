@@ -13,12 +13,13 @@ export default function PaymentCheckout() {
   // Get consultation details from location state or query params
   const consultationId = location.state?.consultationId || new URLSearchParams(location.search).get('consultationId');
   const amount = Number(location.state?.amount || new URLSearchParams(location.search).get('amount') || 2500);
-  const doctorName = location.state?.doctorName || new URLSearchParams(location.search).get('doctorName') || 'Doctor';
+  const doctorId = location.state?.doctorId || new URLSearchParams(location.search).get('doctorId') || '';
 
   const [formData, setFormData] = useState({
     amountLKR: Number.isFinite(amount) && amount >= MIN_CHECKOUT_LKR ? Math.round(amount) : Math.max(2500, MIN_CHECKOUT_LKR),
     currency: 'lkr',
     consultationId: consultationId || '',
+    doctorId: doctorId || '',
     customerEmail: '',
   });
 
@@ -51,6 +52,10 @@ export default function PaymentCheckout() {
     const normalizedAmount = Number(formData.amountLKR);
     if (!formData.consultationId) {
       setError('Consultation id is missing. Please go back and retry from Bill Requests.');
+      return;
+    }
+    if (!formData.doctorId) {
+      setError('Doctor id is missing. Please go back and retry from Bill Requests.');
       return;
     }
     if (!Number.isFinite(normalizedAmount) || normalizedAmount < MIN_CHECKOUT_LKR) {
@@ -165,8 +170,8 @@ export default function PaymentCheckout() {
                 </span>
               </div>
               <div className="flex justify-between items-center py-3 border-b border-gray-200">
-                <span className="text-gray-600 font-semibold">Doctor</span>
-                <span className="font-black text-gray-900">{doctorName}</span>
+                <span className="text-gray-600 font-semibold">Doctor ID</span>
+                <span className="font-black text-gray-900">#{formData.doctorId.slice(-8).toUpperCase()}</span>
               </div>
               <div className="flex justify-between items-center py-3 border-b border-gray-200">
                 <span className="text-gray-600 font-semibold">Service</span>
