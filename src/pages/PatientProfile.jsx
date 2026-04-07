@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../config/api';
 import { UserCircleIcon, ExclamationTriangleIcon, CheckCircleIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import UploadMedicalDocument from '../components/UploadMedicalDocument';
+import { normalizeDocumentUrl } from '../utils/documentUrl';
 
 const readAuthUser = () => {
   try {
@@ -402,9 +403,9 @@ export default function PatientProfile() {
                           Uploaded: {new Date(item.uploadDate || item.createdAt).toLocaleString()}
                         </p>
                       ) : null}
-                      {(item.filePath || item.fileUrl || item.downloadUrl)?.startsWith?.('http') ? (
+                      {normalizeDocumentUrl(item.filePath || item.fileUrl || item.downloadUrl).startsWith('http') ? (
                         <a
-                          href={item.filePath || item.fileUrl || item.downloadUrl}
+                          href={normalizeDocumentUrl(item.filePath || item.fileUrl || item.downloadUrl)}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-block mt-2 text-xs font-black text-[#182C61] hover:underline"
@@ -433,9 +434,9 @@ export default function PatientProfile() {
                           Date: {new Date(item.createdAt || item.uploadDate).toLocaleString()}
                         </p>
                       ) : null}
-                      {(item.fileUrl || item.downloadUrl || item.filePath)?.startsWith?.('http') ? (
+                      {normalizeDocumentUrl(item.fileUrl || item.downloadUrl || item.filePath).startsWith('http') ? (
                         <a
-                          href={item.fileUrl || item.downloadUrl || item.filePath}
+                          href={normalizeDocumentUrl(item.fileUrl || item.downloadUrl || item.filePath)}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-block mt-2 text-xs font-black text-[#182C61] hover:underline"

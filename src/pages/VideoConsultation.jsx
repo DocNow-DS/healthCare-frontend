@@ -14,6 +14,12 @@ function readAuthUser() {
 export default function VideoConsultation() {
    const authUser = useMemo(() => readAuthUser(), []);
    const myId = useMemo(() => authUser?.id || authUser?.userId || '', [authUser]);
+   const patientQueryIds = useMemo(() => {
+      const values = [authUser?.id, authUser?.userId, authUser?.username, authUser?.email]
+         .map((v) => (v == null ? '' : String(v).trim()))
+         .filter(Boolean);
+      return [...new Set(values)];
+   }, [authUser]);
    const isDoctor = useMemo(() => {
       const role = authUser?.role;
       const roles = authUser?.roles;
@@ -23,6 +29,7 @@ export default function VideoConsultation() {
    }, [authUser]);
 
    const [availablePatients, setAvailablePatients] = useState([]);
+   const [availableDoctors, setAvailableDoctors] = useState([]);
    const [doctorAppointments, setDoctorAppointments] = useState([]);
    const [patientsLoading, setPatientsLoading] = useState(false);
    const [patientsError, setPatientsError] = useState('');
@@ -31,6 +38,7 @@ export default function VideoConsultation() {
 
    const [myConsultations, setMyConsultations] = useState([]);
    const [consultationsLoading, setConsultationsLoading] = useState(false);
+   const [selectedSessionDate, setSelectedSessionDate] = useState('');
 
    const [jitsiUrl, setJitsiUrl] = useState('');
    const [frameLoaded, setFrameLoaded] = useState(false);
@@ -77,6 +85,17 @@ export default function VideoConsultation() {
       return map;
    }, [availablePatients]);
 
+   const doctorLookup = useMemo(() => {
+      const map = new Map();
+      availableDoctors.forEach((d) => {
+         const did = d?.id || d?.userId || d?.username;
+         if (did != null) {
+            map.set(String(did), d?.name || d?.fullName || d?.username || String(did));
+         }
+      });
+      return map;
+   }, [availableDoctors]);
+
    const visibleConsultations = useMemo(() => {
       if (!isDoctor) return myConsultations;
       if (appointmentPatientIds.size === 0 && appointmentIds.size === 0) return [];
@@ -88,9 +107,27 @@ export default function VideoConsultation() {
       });
    }, [appointmentIds, appointmentPatientIds, isDoctor, myConsultations]);
 
+   const availableSessionDates = useMemo(() => {
+      const dates = new Set();
+      visibleConsultations.forEach((c) => {
+         dates.add(toDateKey(c?.scheduledAt || c?.startedAt || c?.createdAt));
+      });
+      return Array.from(dates)
+         .filter((d) => d && d !== 'unknown-date')
+         .sort((a, b) => b.localeCompare(a));
+   }, [visibleConsultations]);
+
+   const dateFilteredConsultations = useMemo(() => {
+      if (!selectedSessionDate) return visibleConsultations;
+      return visibleConsultations.filter((c) => {
+         const dayKey = toDateKey(c?.scheduledAt || c?.startedAt || c?.createdAt);
+         return dayKey === selectedSessionDate;
+      });
+   }, [selectedSessionDate, visibleConsultations]);
+
    const consultationsByDate = useMemo(() => {
       const groups = new Map();
-      visibleConsultations.forEach((c) => {
+      dateFilteredConsultations.forEach((c) => {
          const rawDate = c?.scheduledAt || c?.startedAt || c?.createdAt;
          const dayKey = toDateKey(rawDate);
          if (!groups.has(dayKey)) groups.set(dayKey, []);
@@ -107,7 +144,7 @@ export default function VideoConsultation() {
                return bt - at;
             }),
          }));
-   }, [visibleConsultations]);
+   }, [dateFilteredConsultations]);
 
    const approvedAppointments = useMemo(() => {
       return doctorAppointments.filter((a) => String(a?.status || '').toUpperCase() === 'ACCEPTED');
@@ -162,6 +199,16 @@ export default function VideoConsultation() {
       }
    };
 
+   const loadDoctorsIfPatient = async () => {
+      if (isDoctor) return;
+      try {
+         const list = await API.doctors.getAll();
+         setAvailableDoctors(Array.isArray(list) ? list : []);
+      } catch {
+         setAvailableDoctors([]);
+      }
+   };
+
    const loadDoctorAppointments = async () => {
       if (!isDoctor || !myId) return;
       try {
@@ -177,10 +224,30 @@ export default function VideoConsultation() {
       setConsultationsLoading(true);
       setError('');
       try {
-         const list = isDoctor
-            ? await API.telemedSessions.listForDoctor(myId)
-            : await API.telemedSessions.listForPatient(myId);
-         const normalized = Array.isArray(list) ? [...list] : [];
+         let normalized = [];
+
+         if (isDoctor) {
+            const list = await API.telemedSessions.listForDoctor(myId);
+            normalized = Array.isArray(list) ? [...list] : [];
+         } else {
+            const idsToQuery = patientQueryIds.length > 0 ? patientQueryIds : [String(myId)];
+            const results = await Promise.allSettled(idsToQuery.map((pid) => API.telemedSessions.listForPatient(pid)));
+
+            const merged = [];
+            results.forEach((res) => {
+               if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+                  merged.push(...res.value);
+               }
+            });
+
+            const byKey = new Map();
+            merged.forEach((item, idx) => {
+               const key = item?.id || `${item?.appointmentId || 'na'}-${item?.roomName || item?.roomId || 'na'}-${idx}`;
+               if (!byKey.has(key)) byKey.set(key, item);
+            });
+            normalized = Array.from(byKey.values());
+         }
+
          normalized.sort((a, b) => {
             const aTime = new Date(a?.startedAt || a?.createdAt || 0).getTime();
             const bTime = new Date(b?.startedAt || b?.createdAt || 0).getTime();
@@ -196,6 +263,7 @@ export default function VideoConsultation() {
 
    useEffect(() => {
       loadPatientsIfDoctor();
+      loadDoctorsIfPatient();
       loadDoctorAppointments();
       // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [isDoctor, myId]);
@@ -250,7 +318,11 @@ export default function VideoConsultation() {
       if (isBusy) return;
 
       const appointmentId = String(selectedApprovedAppointment.id);
-      const selectedPatientId = selectedApprovedAppointment.patientId;
+      const selectedPatientId = resolveAppointmentPatientId(selectedApprovedAppointment);
+      if (!selectedPatientId) {
+         setError('Selected appointment does not include a patient id.');
+         return;
+      }
 
       setIsBusy(true);
       setError('');
@@ -337,7 +409,7 @@ export default function VideoConsultation() {
                      >
                         <option value="">{patientsLoading ? 'Loading appointments…' : 'Select approved appointment…'}</option>
                         {approvedAppointments.map((a) => {
-                           const pid = a?.patientId || 'N/A';
+                           const pid = resolveAppointmentPatientId(a) || 'N/A';
                            const label = `#${a?.id} - Patient ${pid} - ${formatAppointmentTime(a?.startTime)}`;
                            return (
                               <option key={a?.id} value={a?.id}>
@@ -351,7 +423,7 @@ export default function VideoConsultation() {
                   <div>
                      <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-1">Patient</label>
                      <div className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-[#1e272e] font-black">
-                        {selectedApprovedAppointment?.patientId || '—'}
+                        {resolveAppointmentPatientId(selectedApprovedAppointment) || '—'}
                      </div>
                   </div>
 
@@ -389,6 +461,44 @@ export default function VideoConsultation() {
                </span>
             </div>
 
+            <div className="mb-3 space-y-2">
+               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[#808e9b]">Find by date</label>
+                  <input
+                     type="date"
+                     value={selectedSessionDate}
+                     onChange={(e) => setSelectedSessionDate(e.target.value)}
+                     className="w-full sm:w-auto px-2 py-1.5 border border-slate-200 rounded-md text-[10px] font-black text-[#1e272e] bg-white"
+                  />
+                  <button
+                     type="button"
+                     onClick={() => setSelectedSessionDate('')}
+                     className="px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-md border border-slate-200 text-[#808e9b] hover:border-primary-500 hover:text-primary-500"
+                  >
+                     Clear
+                  </button>
+               </div>
+
+               {availableSessionDates.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                     {availableSessionDates.slice(0, 8).map((day) => (
+                        <button
+                           key={day}
+                           type="button"
+                           onClick={() => setSelectedSessionDate(day)}
+                           className={`px-2 py-1 rounded-md border text-[9px] font-black uppercase tracking-widest transition-all ${
+                              selectedSessionDate === day
+                                 ? 'border-primary-500 bg-primary-500 text-white'
+                                 : 'border-slate-200 text-[#808e9b] hover:border-primary-500 hover:text-primary-500'
+                           }`}
+                        >
+                           {formatDateHeading(day)}
+                        </button>
+                     ))}
+                  </div>
+               ) : null}
+            </div>
+
             <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
                {consultationsByDate.map((group) => (
                   <div key={group.dayKey} className="rounded-lg border border-slate-100 bg-slate-50/70">
@@ -409,6 +519,11 @@ export default function VideoConsultation() {
                                  <div className="text-[9px] font-bold text-[#808e9b] mt-0.5 truncate">
                                     Patient: {patientLookup.get(String(c?.patientId || '')) || c?.patientId || 'N/A'}
                                  </div>
+                                 {!isDoctor ? (
+                                    <div className="text-[9px] font-bold text-[#808e9b] truncate">
+                                       Doctor: {doctorLookup.get(String(c?.doctorId || '')) || c?.doctorId || 'N/A'}
+                                    </div>
+                                 ) : null}
                                  <div className="text-[9px] font-bold text-[#808e9b] truncate">
                                     Appointment: {c?.appointmentId || 'N/A'} • Room: {c?.roomName || c?.roomId || 'N/A'}
                                  </div>
@@ -505,4 +620,18 @@ function formatShortDateTime(value) {
    const d = new Date(value);
    if (Number.isNaN(d.getTime())) return String(value);
    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function resolveAppointmentPatientId(appointment) {
+   if (!appointment || typeof appointment !== 'object') return '';
+   const candidate =
+      appointment.patientId ||
+      appointment.patientID ||
+      appointment.userId ||
+      appointment.patient?.id ||
+      appointment.patient?.userId ||
+      appointment.patient?.username ||
+      appointment.patientUsername;
+
+   return candidate == null ? '' : String(candidate).trim();
 }

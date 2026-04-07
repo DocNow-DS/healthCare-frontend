@@ -65,13 +65,10 @@ export default function PaymentCheckout() {
     setLoading(true);
 
     try {
-      const successParams = new URLSearchParams({
-        consultationId: String(formData.consultationId || ''),
-      });
       const cancelParams = new URLSearchParams({
         consultationId: String(formData.consultationId || ''),
       });
-      const successUrl = `${window.location.origin}/dashboard/payment/success?${successParams.toString()}`;
+      const successUrl = `${window.location.origin}/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}&consultationId=${encodeURIComponent(String(formData.consultationId || ''))}`;
       const cancelUrl = `${window.location.origin}/dashboard/payment/cancel?${cancelParams.toString()}`;
 
       const requestData = {
@@ -137,7 +134,7 @@ export default function PaymentCheckout() {
   return (
     <section className="page">
       <div className="max-w-3xl mx-auto space-y-6">
-        <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-primary-50 p-6">
+        <div className="rounded-3xl border border-slate-200 bg-linear-to-br from-white via-slate-50 to-primary-50 p-6">
           <p className="text-[10px] font-black uppercase tracking-widest text-[#808e9b]">Payment Gateway</p>
           <h1 className="text-3xl font-black text-primary-500 mt-2 tracking-tight">Complete Your Payment</h1>
           <p className="text-sm font-semibold text-[#808e9b] mt-1">Secure Stripe checkout for this consultation bill.</p>

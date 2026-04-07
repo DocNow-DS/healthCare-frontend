@@ -14,6 +14,31 @@ export default function PaymentSuccess() {
   const sessionId = queryParams.get('session_id');
   const consultationId = queryParams.get('consultationId');
 
+  const markBillInactive = async (response) => {
+    const carePlanId = String(
+      response?.consultationId
+        || response?.carePlanId
+        || response?.metadata?.consultationId
+        || consultationId
+        || '',
+    ).trim();
+
+    if (!carePlanId) {
+      console.warn('[Payment Verification] Missing consultation/care plan id for status update');
+      setStatusMessage('Payment confirmed, but bill id was missing for status update. Please refresh Bill Requests.');
+      return;
+    }
+
+    try {
+      await API.carePlans.markPaidInternal(carePlanId);
+      console.log(`[Payment Verification] Marked care plan inactive: ${carePlanId}`);
+      setStatusMessage('Payment confirmed. Your bill is now marked inactive.');
+    } catch (markPaidError) {
+      console.error('[Payment Verification] Failed to mark care plan inactive:', markPaidError);
+      setStatusMessage('Payment confirmed, but bill status update failed. Please refresh Bill Requests.');
+    }
+  };
+
   useEffect(() => {
     if (paymentDetails?.status === 'COMPLETED') {
       createBillingReportEntry({
@@ -29,10 +54,35 @@ export default function PaymentSuccess() {
   useEffect(() => {
     if (sessionId) {
       verifyPayment();
+    } else if (consultationId) {
+      verifyPaymentByConsultation();
     } else {
+      setStatusMessage('Missing session details. Please refresh Bill Requests.');
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [consultationId, sessionId]);
+
+  const verifyPaymentByConsultation = async () => {
+    try {
+      const response = await API.payment.getPaymentByConsultation(consultationId);
+      setPaymentDetails(response);
+
+      const status = String(response?.status || '').toUpperCase();
+      if (status === 'COMPLETED') {
+        await markBillInactive(response);
+        localStorage.setItem('billing_refresh_ts', String(Date.now()));
+      } else if (status === 'FAILED' || status === 'EXPIRED') {
+        setStatusMessage(`Payment ${status.toLowerCase()}. Please try again.`);
+      } else {
+        setStatusMessage('Payment is processing. Please refresh Bill Requests in a few seconds.');
+      }
+    } catch (error) {
+      console.error('Error verifying payment by consultation:', error);
+      setStatusMessage('Could not verify payment status right now. Please refresh Bill Requests.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const verifyPayment = async () => {
     const maxAttempts = 12;
@@ -42,15 +92,22 @@ export default function PaymentSuccess() {
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         let response;
         try {
+          console.log(`[Payment Verification] Attempt ${attempt}/${maxAttempts}: Confirming payment...`);
           response = await API.payment.confirmPaymentSession(sessionId);
-        } catch {
+          console.log(`[Payment Verification] Confirm response:`, response);
+        } catch (error) {
+          console.log(`[Payment Verification] Confirm failed, falling back to GET: ${error.message}`);
           response = await API.payment.getPaymentBySession(sessionId);
+          console.log(`[Payment Verification] GET response:`, response);
         }
         setPaymentDetails(response);
 
         const status = String(response?.status || '').toUpperCase();
+        console.log(`[Payment Verification] Current status: ${status}`);
+
         if (status === 'COMPLETED') {
-          setStatusMessage('Payment confirmed. Your bill is now marked inactive.');
+          await markBillInactive(response);
+
           localStorage.setItem('billing_refresh_ts', String(Date.now()));
           return;
         }
@@ -65,6 +122,7 @@ export default function PaymentSuccess() {
       }
 
       setStatusMessage('Payment is still processing. Please open Bill Requests and click Refresh in a few seconds.');
+      console.warn('[Payment Verification] Verification timed out after 12 attempts');
     } catch (error) {
       console.error('Error verifying payment:', error);
       setPaymentDetails({
@@ -119,7 +177,11 @@ export default function PaymentSuccess() {
                 <div className="flex justify-between">
                   <span className="text-gray-600">Transaction ID</span>
                   <span className="font-medium text-gray-900">
-                    {(paymentDetails?.stripeSessionId || sessionId) ? (paymentDetails?.stripeSessionId || sessionId).slice(-12).toUpperCase() : 'N/A'}
+                    {paymentDetails?.stripePaymentIntentId
+                      ? paymentDetails.stripePaymentIntentId
+                      : (paymentDetails?.stripeSessionId || sessionId)
+                        ? (paymentDetails?.stripeSessionId || sessionId).slice(-12).toUpperCase()
+                        : 'N/A'}
                   </span>
                 </div>
                 <div className="flex justify-between">
