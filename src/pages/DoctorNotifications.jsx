@@ -84,6 +84,8 @@ export default function DoctorNotifications() {
         return 'bg-purple-50 border-purple-200 text-purple-800';
       case 'BILLING_REQUEST':
         return 'bg-yellow-50 border-yellow-200 text-yellow-800';
+      case 'PAYMENT_COMPLETED':
+        return 'bg-emerald-50 border-emerald-200 text-emerald-800';
       default:
         return 'bg-slate-50 border-slate-200 text-slate-800';
     }

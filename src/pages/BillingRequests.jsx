@@ -193,7 +193,7 @@ export default function BillingRequests() {
       state: {
         consultationId: String(consultationId),
         amount,
-        doctorName: String(bill?.doctorId || 'Doctor'),
+        doctorId: String(bill?.doctorId || ''),
       },
     });
   };
