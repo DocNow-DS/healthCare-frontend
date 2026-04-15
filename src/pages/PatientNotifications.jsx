@@ -78,6 +78,8 @@ export default function PatientNotifications() {
         return 'bg-red-50 border-red-200 text-red-800';
       case 'APPOINTMENT_CREATED':
         return 'bg-blue-50 border-blue-200 text-blue-800';
+      case 'CARE_PLAN_CREATED':
+        return 'bg-purple-50 border-purple-200 text-purple-800';
       default:
         return 'bg-slate-50 border-slate-200 text-slate-800';
     }

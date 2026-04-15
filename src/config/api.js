@@ -244,6 +244,7 @@ export const API = {
       body: JSON.stringify(payload),
     }),
     getByDoctor: (doctorId) => apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}`),
+    getByPatient: (patientId) => apiClient(`${services.doctor}/api/care-plans/patient/${patientId}`),
     getByDoctorAndPatient: (doctorId, patientId) =>
       apiClient(`${services.doctor}/api/care-plans/doctor/${doctorId}/patient/${patientId}`),
     // Internal endpoint used after successful payment to mark a bill inactive/completed.
