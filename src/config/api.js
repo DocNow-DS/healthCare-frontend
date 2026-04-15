@@ -521,6 +521,10 @@ export const API = {
         return safe
       }
     },
+    getDoctorAvailability: (doctorId) =>
+      apiClient(`${services.doctor}/api/availability/user/${encodeURIComponent(String(doctorId))}`, {
+        method: 'GET',
+      }),
   },
 
 

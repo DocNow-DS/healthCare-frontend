@@ -20,6 +20,7 @@ export default function DoctorAppointments() {
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState('');
   const [appointments, setAppointments] = useState([]);
+  const [expandedId, setExpandedId] = useState(null);
   const [sessionLinksByAppointment, setSessionLinksByAppointment] = useState({});
   const [generatingByAppointment, setGeneratingByAppointment] = useState({});
   const [actingByAppointment, setActingByAppointment] = useState({});
@@ -38,6 +39,9 @@ export default function DoctorAppointments() {
         return bTime - aTime;
       });
       setAppointments(normalized);
+      if (normalized.length > 0 && !expandedId) {
+        setExpandedId(normalized[0].id);
+      }
     } catch (e) {
       setWarning(e?.message || 'Unable to load doctor appointments');
       setAppointments([]);
@@ -153,7 +157,6 @@ export default function DoctorAppointments() {
       <div className="flex items-center justify-between">
         <div className="max-w-sm">
           <h1 className="text-3xl font-black text-[#182C61]">Appointments</h1>
-          <p className="text-[#808e9b] mt-1 font-bold">Your booked appointments from backend</p>
         </div>
         <button
           type="button"
@@ -187,89 +190,149 @@ export default function DoctorAppointments() {
             {appointments.map((a) => (
               <div
                 key={a.id}
-                className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                role="button"
+                tabIndex={0}
+                onClick={() => setExpandedId(a.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') setExpandedId(a.id);
+                }}
+                className={`rounded-2xl border transition-all cursor-pointer ${
+                  expandedId === a.id
+                    ? 'border-[#182C61]/25 bg-white shadow-sm'
+                    : 'border-slate-200/80 bg-white hover:border-[#182C61]/20 hover:shadow-sm'
+                }`}
               >
-                <div>
-                  <p className="text-sm font-black text-[#182C61]">
-                    Patient ID: {a.patientId || 'N/A'}
-                  </p>
-                  <p className="text-xs font-bold text-[#808e9b] mt-1">
-                    {formatAppointmentTime(a.startTime)}{a.endTime ? ` – ${formatAppointmentTime(a.endTime)}` : ''}
-                  </p>
-                  {a.notes ? (
-                    <p className="text-xs text-[#808e9b] mt-2 line-clamp-2">{a.notes}</p>
-                  ) : null}
-
-                  {sessionLinksByAppointment[a.id] ? (
-                    <a
-                      href={sessionLinksByAppointment[a.id]}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-block mt-2 text-xs font-black text-[#182C61] hover:underline"
-                    >
-                      Open session link
-                    </a>
-                  ) : null}
-                </div>
-
-                <div className="flex flex-col items-start sm:items-end gap-2">
-                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[#182C61]">
-                    <CalendarDaysIcon className="h-4 w-4" />
-                    {String(a.status || '—').toUpperCase()}
+                <div className="p-4 md:p-5 flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-[#182C61]/10 text-[#182C61] flex items-center justify-center text-xs font-black tracking-wide shrink-0">
+                      {getPersonInitials(a.patientName || a.patientFullName || a.patientId || 'PT')}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-base font-black text-[#182C61] truncate">
+                        {a.patientName || a.patientFullName || `Patient ${a.patientId || 'N/A'}`}
+                      </p>
+                      <p className="text-xs font-semibold text-[#808e9b] truncate">
+                        {formatAppointmentTimeShort(a.startTime)}
+                      </p>
+                    </div>
                   </div>
 
-                  {isPendingApproval(a) ? (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleDoctorAction(a, 'ACCEPT')}
-                        disabled={Boolean(actingByAppointment[a.id])}
-                        className="px-3 py-1.5 rounded-lg text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
-                      >
-                        {actingByAppointment[a.id] ? 'Saving...' : 'Approve'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDoctorAction(a, 'DECLINE')}
-                        disabled={Boolean(actingByAppointment[a.id])}
-                        className="px-3 py-1.5 rounded-lg text-xs font-black border border-rose-600 text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                      >
-                        Decline
-                      </button>
-                    </div>
-                  ) : null}
-
-                  {canGenerateSession(a) ? (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleGenerateSessionLink(a)}
-                        disabled={Boolean(generatingByAppointment[a.id]) || Boolean(actingByAppointment[a.id])}
-                        className="px-3 py-1.5 rounded-lg text-xs font-black bg-[#182C61] text-white hover:bg-[#182C61]/85 disabled:opacity-60"
-                      >
-                        {generatingByAppointment[a.id] ? 'Generating...' : 'Generate Link'}
-                      </button>
-
-                      {sessionLinksByAppointment[a.id] ? (
-                        <button
-                          type="button"
-                          onClick={() => handleCopyLink(sessionLinksByAppointment[a.id])}
-                          className="px-3 py-1.5 rounded-lg text-xs font-black border border-[#182C61] text-[#182C61] hover:bg-[#182C61]/5"
-                        >
-                          Copy Link
-                        </button>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        onClick={() => handleCreateCarePlan(a)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-black border border-[#182C61] text-[#182C61] hover:bg-[#182C61]/5"
-                      >
-                        Create Care Plans
-                      </button>
-                    </div>
-                  ) : null}
+                  <div className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold ${getStatusMeta(a.status).badge}`}>
+                    <span className={`h-2 w-2 rounded-full ${getStatusMeta(a.status).dot}`} />
+                    {getStatusMeta(a.status).label}
+                  </div>
                 </div>
+
+                {expandedId === a.id ? (
+                  <div className="border-t border-slate-100 px-4 md:px-5 pb-4 md:pb-5 pt-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                      <div className="lg:col-span-2 rounded-xl border border-slate-100 bg-slate-50/60 p-4 space-y-2">
+                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#808e9b]">
+                          Appointment details
+                        </p>
+                        <p className="text-sm font-black text-[#182C61]">
+                          {a.consultationType || 'Consultation'}
+                        </p>
+                        <p className="text-xs font-semibold text-[#4b5563]">
+                          Patient ID: {a.patientId || 'N/A'}
+                        </p>
+                        <p className="text-xs font-semibold text-[#4b5563]">
+                          Start: {formatAppointmentTime(a.startTime)}
+                        </p>
+                        <p className="text-xs font-semibold text-[#4b5563]">
+                          End: {a.endTime ? formatAppointmentTime(a.endTime) : '—'}
+                        </p>
+                        <p className="text-xs text-[#6b7280]">
+                          {a.notes && String(a.notes).trim() ? a.notes : 'No notes.'}
+                        </p>
+                        {sessionLinksByAppointment[a.id] ? (
+                          <a
+                            href={sessionLinksByAppointment[a.id]}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-block text-xs font-black text-[#182C61] hover:underline"
+                          >
+                            Open session link
+                          </a>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-xl border border-slate-100 bg-white p-4 space-y-3">
+                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#808e9b]">
+                          Actions
+                        </p>
+
+                        {isPendingApproval(a) ? (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDoctorAction(a, 'ACCEPT');
+                              }}
+                              disabled={Boolean(actingByAppointment[a.id])}
+                              className="w-full px-3 py-2.5 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                            >
+                              {actingByAppointment[a.id] ? 'Saving...' : 'Approve'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDoctorAction(a, 'DECLINE');
+                              }}
+                              disabled={Boolean(actingByAppointment[a.id])}
+                              className="w-full px-3 py-2.5 rounded-xl text-xs font-black border border-rose-600 text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        ) : null}
+
+                        {canGenerateSession(a) ? (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleGenerateSessionLink(a);
+                              }}
+                              disabled={Boolean(generatingByAppointment[a.id]) || Boolean(actingByAppointment[a.id])}
+                              className="w-full px-3 py-2.5 rounded-xl text-xs font-black bg-[#182C61] text-white hover:bg-[#182C61]/85 disabled:opacity-60"
+                            >
+                              {generatingByAppointment[a.id] ? 'Generating...' : 'Generate Link'}
+                            </button>
+
+                            {sessionLinksByAppointment[a.id] ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCopyLink(sessionLinksByAppointment[a.id]);
+                                }}
+                                className="w-full px-3 py-2.5 rounded-xl text-xs font-black border border-[#182C61] text-[#182C61] hover:bg-[#182C61]/5"
+                              >
+                                Copy Link
+                              </button>
+                            ) : null}
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCreateCarePlan(a);
+                              }}
+                              className="w-full px-3 py-2.5 rounded-xl text-xs font-black border border-[#182C61] text-[#182C61] hover:bg-[#182C61]/5"
+                            >
+                              Create Care Plans
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
@@ -284,6 +347,47 @@ function formatAppointmentTime(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleString();
+}
+
+function formatAppointmentTimeShort(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString(undefined, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function getPersonInitials(name) {
+  const cleaned = String(name || '').trim();
+  if (!cleaned) return 'PT';
+  const parts = cleaned.split(/[\s_.-]+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+}
+
+function getStatusMeta(status) {
+  const normalized = String(status || '').toUpperCase();
+  if (normalized === 'ACCEPTED') {
+    return { label: 'Accepted', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' };
+  }
+  if (normalized === 'DECLINED') {
+    return { label: 'Declined', badge: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' };
+  }
+  if (normalized === 'CANCELLED') {
+    return { label: 'Cancelled', badge: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-500' };
+  }
+  if (normalized === 'COMPLETED') {
+    return { label: 'Completed', badge: 'bg-sky-50 text-sky-700 border-sky-200', dot: 'bg-sky-500' };
+  }
+  if (normalized === 'PENDING' || normalized === 'RESCHEDULE_REQUESTED') {
+    return { label: 'Pending', badge: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' };
+  }
+  return { label: normalized || 'Unknown', badge: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-500' };
 }
 
 function canGenerateSession(appointment) {
