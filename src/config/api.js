@@ -346,6 +346,11 @@ export const API = {
       method: 'POST',
       body: JSON.stringify(userData),
     }),
+    getUserById: (id) => apiClient(`${services.patient}/api/auth/users/${encodeURIComponent(String(id))}`),
+    updateUserById: (id, data) => apiClient(`${services.patient}/api/auth/users/${encodeURIComponent(String(id))}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
   },
 
   // Notification Endpoints

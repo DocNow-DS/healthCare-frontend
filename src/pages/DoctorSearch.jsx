@@ -436,16 +436,7 @@ export default function DoctorSearch() {
           filteredDoctors.map((doctor) => (
           <div key={doctor.id} className="bg-white border border-slate-300/70 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
             <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <img
-                    src={doctor.profileImageUrl || doctor.image || fallbackImage}
-                    alt={doctor.name || doctor.fullName || 'Doctor'}
-                    className="w-16 h-16 rounded-2xl object-cover"
-                  />
-                  <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-500" />
-                </div>
-              </div>
+              <div />
               <span className="text-sm font-semibold text-slate-500 flex items-center gap-2">
                 <span className={`h-2.5 w-2.5 rounded-full ${doctor.enabled !== false ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                 {doctor.enabled !== false ? 'online' : 'offline'}
