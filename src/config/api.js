@@ -495,6 +495,16 @@ export const API = {
           body: JSON.stringify({ action: 'DECLINE', message }),
         },
       ),
+    complete: (doctorId, appointmentId) =>
+      apiClient(
+        `${services.appointment}/api/doctor/appointments/${encodeURIComponent(String(appointmentId))}/complete`,
+        {
+          method: 'PATCH',
+          headers: {
+            'X-Doctor-Id': String(doctorId),
+          },
+        },
+      ),
   },
 
   /** Appointment service: doctor directory for booking (optional `specialty` query). */

@@ -33,16 +33,45 @@ export default function DoctorAppointments() {
     setLoading(true);
     setWarning('');
     try {
-      const list = await API.doctorAppointments.list(doctorId);
+      const [list, allPatients] = await Promise.all([
+        API.doctorAppointments.list(doctorId),
+        API.patients.getAll().catch(() => []),
+      ]);
       const normalized = Array.isArray(list) ? list : [];
-      normalized.sort((a, b) => {
+      const patientById = new Map();
+      (Array.isArray(allPatients) ? allPatients : []).forEach((patient) => {
+        [patient?._id, patient?.id, patient?.userId, patient?.username, patient?.email]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+          .forEach((key) => patientById.set(key, patient));
+      });
+
+      const normalizedWithPatientInfo = normalized.map((a) => {
+        const patientId = String(a?.patientId || '').trim();
+        const profile = patientId ? patientById.get(patientId) : null;
+        const resolvedName = firstMeaningfulText(
+          a?.patientName,
+          a?.patientFullName,
+          a?.name,
+          profile?.name,
+          profile?.fullName,
+          profile?.username,
+          patientId,
+        );
+        return {
+          ...a,
+          patientName: resolvedName,
+          patientGender: a?.patientGender || a?.gender || profile?.gender || '',
+        };
+      });
+      normalizedWithPatientInfo.sort((a, b) => {
         const aTime = new Date(a?.startTime || a?.createdAt || 0).getTime();
         const bTime = new Date(b?.startTime || b?.createdAt || 0).getTime();
         return bTime - aTime;
       });
-      setAppointments(normalized);
-      if (normalized.length > 0 && !expandedId) {
-        setExpandedId(normalized[0].id);
+      setAppointments(normalizedWithPatientInfo);
+      if (normalizedWithPatientInfo.length > 0 && !expandedId) {
+        setExpandedId(normalizedWithPatientInfo[0].id);
       }
     } catch (e) {
       setWarning(e?.message || 'Unable to load doctor appointments');
@@ -67,16 +96,26 @@ export default function DoctorAppointments() {
     [appointments, filterKey],
   );
 
+  const sortedFilteredAppointments = useMemo(
+    () =>
+      [...filteredAppointments].sort((a, b) => {
+        const aTime = new Date(a?.startTime || a?.createdAt || 0).getTime();
+        const bTime = new Date(b?.startTime || b?.createdAt || 0).getTime();
+        return bTime - aTime;
+      }),
+    [filteredAppointments],
+  );
+
   useEffect(() => {
-    if (filteredAppointments.length === 0) {
+    if (sortedFilteredAppointments.length === 0) {
       setExpandedId(null);
       return;
     }
-    const stillVisible = filteredAppointments.some((a) => a.id === expandedId);
+    const stillVisible = sortedFilteredAppointments.some((a) => a.id === expandedId);
     if (!stillVisible) {
-      setExpandedId(filteredAppointments[0].id);
+      setExpandedId(sortedFilteredAppointments[0].id);
     }
-  }, [filteredAppointments, expandedId]);
+  }, [sortedFilteredAppointments, expandedId]);
 
   const nextAppointment = useMemo(() => {
     const now = nowMs;
@@ -177,6 +216,25 @@ export default function DoctorAppointments() {
       setActionMessage('Session link copied to clipboard.');
     } catch {
       setActionMessage('Could not copy link automatically. Please copy it manually.');
+    }
+  };
+
+  const handleCompleteAppointment = async (appointment) => {
+    const appointmentId = String(appointment?.id || '');
+    if (!appointmentId || !doctorId) {
+      setActionMessage('Missing appointment or doctor id.');
+      return;
+    }
+    setActionMessage('');
+    setActingByAppointment((prev) => ({ ...prev, [appointmentId]: true }));
+    try {
+      await API.doctorAppointments.complete(doctorId, appointmentId);
+      setActionMessage(`Appointment ${appointmentId} marked as completed.`);
+      await loadAppointments();
+    } catch (e) {
+      setActionMessage(e?.message || 'Failed to mark appointment as completed');
+    } finally {
+      setActingByAppointment((prev) => ({ ...prev, [appointmentId]: false }));
     }
   };
 
@@ -297,11 +355,55 @@ export default function DoctorAppointments() {
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-5">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {[
-            { key: 'ALL', label: 'All' },
-            { key: 'TODAY', label: 'Today' },
-            { key: 'TOMORROW', label: 'Tomorrow' },
-            { key: 'ACCEPTED', label: 'Accepted' },
-            { key: 'DECLINED', label: 'Declined' },
+            {
+              key: 'ALL',
+              label: 'All',
+              emoji: '📋',
+              active: 'bg-[#182C61] border-[#182C61] text-white shadow-md shadow-[#182C61]/20',
+              idle: 'bg-[#eaf1ff] border-[#d7e4ff] text-[#182C61] hover:bg-[#dfeaff]',
+            },
+            {
+              key: 'TODAY',
+              label: 'Today',
+              emoji: '📅',
+              active: 'bg-sky-600 border-sky-600 text-white shadow-md shadow-sky-600/20',
+              idle: 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100',
+            },
+            {
+              key: 'TOMORROW',
+              label: 'Tomorrow',
+              emoji: '🌤️',
+              active: 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20',
+              idle: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100',
+            },
+            {
+              key: 'DONE',
+              label: 'Done',
+              emoji: '✅',
+              active: 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-600/20',
+              idle: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100',
+            },
+            {
+              key: 'PENDING',
+              label: 'Pending',
+              emoji: '⏳',
+              active: 'bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-500/20',
+              idle: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100',
+            },
+            {
+              key: 'TO_BE_CONFIRMED',
+              label: 'To Be Confirmed',
+              emoji: '🕒',
+              active: 'bg-orange-500 border-orange-500 text-white shadow-md shadow-orange-500/20',
+              idle: 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100',
+            },
+            {
+              key: 'DECLINED',
+              label: 'Declined',
+              emoji: '❌',
+              active: 'bg-rose-600 border-rose-600 text-white shadow-md shadow-rose-600/20',
+              idle: 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100',
+            },
           ].map((f) => (
             <button
               key={f.key}
@@ -309,10 +411,11 @@ export default function DoctorAppointments() {
               onClick={() => setFilterKey(f.key)}
               className={`px-3.5 py-1.5 rounded-full border text-xs font-black uppercase tracking-wider transition-all ${
                 filterKey === f.key
-                  ? 'bg-[#182C61] border-[#182C61] text-white shadow-md shadow-[#182C61]/20'
-                  : 'bg-slate-50 border-slate-200 text-[#182C61] hover:bg-slate-100'
+                  ? f.active
+                  : f.idle
               }`}
             >
+              <span className="mr-1">{f.emoji}</span>
               {f.label}
             </button>
           ))}
@@ -320,11 +423,11 @@ export default function DoctorAppointments() {
 
         {loading ? (
           <p className="text-sm font-bold text-[#808e9b]">Loading appointments...</p>
-        ) : filteredAppointments.length === 0 ? (
+        ) : sortedFilteredAppointments.length === 0 ? (
           <p className="text-sm font-bold text-[#808e9b]">No appointments found.</p>
         ) : (
           <div className="space-y-3">
-            {filteredAppointments.map((a) => (
+            {sortedFilteredAppointments.map((a) => (
               <div
                 key={a.id}
                 role="button"
@@ -348,7 +451,6 @@ export default function DoctorAppointments() {
                       <p className="text-base font-black text-[#182C61] truncate">
                         {formatPatientDisplayName(a)}
                       </p>
-                      <p className="text-xs font-semibold text-[#6b7280] truncate">Patient ID: {a.patientId || 'N/A'}</p>
                       <p className="text-xs font-semibold text-[#808e9b] truncate">{formatAppointmentTimeShort(a.startTime)}</p>
                     </div>
                   </div>
@@ -448,6 +550,20 @@ export default function DoctorAppointments() {
                                 ) : null}
                               </div>
                             ) : null}
+
+                            {canMarkCompleted(a) ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCompleteAppointment(a);
+                                }}
+                                disabled={Boolean(actingByAppointment[a.id])}
+                                className="w-full mt-2 px-3 py-2.5 rounded-xl text-sm font-black bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:brightness-105 disabled:opacity-60"
+                              >
+                                {actingByAppointment[a.id] ? 'Saving...' : '✅ Confirm Done'}
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -503,7 +619,7 @@ function getStatusMeta(status) {
     return { label: 'Cancelled', badge: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-500' };
   }
   if (normalized === 'COMPLETED') {
-    return { label: 'Completed', badge: 'bg-sky-50 text-sky-700 border-sky-200', dot: 'bg-sky-500' };
+    return { label: 'Done', badge: 'bg-sky-50 text-sky-700 border-sky-200', dot: 'bg-sky-500' };
   }
   if (normalized === 'PENDING' || normalized === 'RESCHEDULE_REQUESTED') {
     return { label: 'Pending', badge: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' };
@@ -533,7 +649,9 @@ function matchesFilter(appointment, filterKey) {
   if (filterKey === 'ALL') return true;
 
   const status = String(appointment?.status || '').toUpperCase();
-  if (filterKey === 'ACCEPTED') return status === 'ACCEPTED';
+  if (filterKey === 'DONE') return status === 'COMPLETED';
+  if (filterKey === 'PENDING') return status === 'PENDING' || status === 'RESCHEDULE_REQUESTED';
+  if (filterKey === 'TO_BE_CONFIRMED') return canMarkCompleted(appointment);
   if (filterKey === 'DECLINED') return status === 'DECLINED';
 
   const start = new Date(appointment?.startTime || 0);
@@ -548,16 +666,43 @@ function matchesFilter(appointment, filterKey) {
   return true;
 }
 
+function canMarkCompleted(appointment) {
+  const status = String(appointment?.status || '').toUpperCase();
+  if (status !== 'ACCEPTED') return false;
+  const end = new Date(appointment?.endTime || 0);
+  if (!Number.isNaN(end.getTime())) {
+    return end.getTime() <= Date.now();
+  }
+  const start = new Date(appointment?.startTime || 0);
+  if (Number.isNaN(start.getTime())) return false;
+  const assumedEnd = start.getTime() + 30 * 60 * 1000;
+  return assumedEnd <= Date.now();
+}
+
 function formatPatientDisplayName(appointment) {
-  const rawName = String(
-    appointment?.patientName ||
-      appointment?.patientFullName ||
-      appointment?.name ||
-      appointment?.patientId ||
-      'N/A',
-  ).trim();
+  const rawName = firstMeaningfulText(
+    appointment?.patientName,
+    appointment?.patientFullName,
+    appointment?.name,
+    appointment?.patientId,
+    'N/A',
+  );
   const nameWithoutPatientLabel = rawName.replace(/^patient\s+/i, '').trim();
   const gender = String(appointment?.patientGender || appointment?.gender || '').trim().toUpperCase();
   const prefix = gender.startsWith('M') ? 'Mr.' : gender.startsWith('F') ? 'Miss' : '';
   return prefix ? `${prefix} ${nameWithoutPatientLabel}` : nameWithoutPatientLabel;
+}
+
+function isMeaningfulText(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  const normalized = text.toLowerCase();
+  return !['unknown', 'n/a', 'na', 'null', 'undefined'].includes(normalized);
+}
+
+function firstMeaningfulText(...values) {
+  for (const value of values) {
+    if (isMeaningfulText(value)) return String(value).trim();
+  }
+  return '';
 }

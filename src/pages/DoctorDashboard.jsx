@@ -139,6 +139,7 @@ export default function DoctorDashboard() {
       let patientsData = [];
       let doctorProfile = null;
       let doctorSessions = [];
+      let doctorAppointments = [];
 
       const errors = [];
 
@@ -162,10 +163,16 @@ export default function DoctorDashboard() {
         } catch (error) {
           errors.push('telemed-sessions');
         }
+        try {
+          doctorAppointments = await API.doctorAppointments.list(doctorId);
+        } catch (error) {
+          errors.push('doctor-appointments');
+        }
       }
 
       const safePatients = Array.isArray(patientsData) ? patientsData : [];
       const safeSessions = Array.isArray(doctorSessions) ? doctorSessions : [];
+      const safeAppointments = Array.isArray(doctorAppointments) ? doctorAppointments : [];
 
       setDoctorName(
         doctorProfile?.name ||
@@ -212,7 +219,18 @@ export default function DoctorDashboard() {
         })
         .sort((a, b) => (b.when?.getTime() || 0) - (a.when?.getTime() || 0));
 
-      const todayAppointments = sessionRows.filter((row) => isToday(row.when) && row.status !== 'ENDED').length;
+      const appointmentRows = safeAppointments.map((appointment) => {
+        const when = appointment?.startTime ? new Date(appointment.startTime) : null;
+        return {
+          when: when && !Number.isNaN(when.getTime()) ? when : null,
+          status: String(appointment?.status || '').toUpperCase(),
+        };
+      });
+
+      const todayAppointments = appointmentRows.filter((row) => {
+        if (!isToday(row.when)) return false;
+        return !['DECLINED', 'CANCELLED', 'COMPLETED'].includes(row.status);
+      }).length;
       const completedConsultations = sessionRows.filter((row) => row.status === 'ENDED').length;
       const monthlyCompleted = sessionRows.filter((row) => row.status === 'ENDED' && isCurrentMonth(row.when)).length;
       const consultationFee = Number(doctorProfile?.consultationFee || doctorProfile?.fee || 0);
