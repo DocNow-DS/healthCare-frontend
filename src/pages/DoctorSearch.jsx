@@ -452,10 +452,10 @@ export default function DoctorSearch() {
             </div>
 
             <div>
-              <h3 className="text-2xl md:text-[26px] leading-tight font-black text-[#111827]">
+              <h3 className="text-xl md:text-2xl leading-tight font-black text-[#111827]">
                 Dr. {doctor.name || doctor.fullName || doctor.username || 'Doctor'}
               </h3>
-              <p className="text-sm text-slate-600 mt-1 leading-5">
+              <p className="text-xs text-slate-600 mt-1 leading-5">
                 {doctor.specialization || doctor.specialty || 'General specialist'}
                 {(doctor.hospitalName || doctor.hospital) ? `, ${doctor.hospitalName || doctor.hospital}` : ''}
               </p>
@@ -463,11 +463,11 @@ export default function DoctorSearch() {
 
             <div className="mt-5 pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm text-slate-700">Consultation Fee:</p>
-                <p className="text-2xl leading-none font-black text-emerald-600 mt-1">
+                <p className="text-xs text-slate-700">Consultation Fee:</p>
+                <p className="text-xl leading-none font-black text-emerald-600 mt-1">
                   LKR {doctor.consultationFee || doctor.fee || 'N/A'}
                 </p>
-                <p className="text-sm font-black text-slate-800 mt-4">VIEW PROFILE</p>
+                <p className="text-xs font-black text-slate-800 mt-4">VIEW PROFILE</p>
               </div>
               <button
                 type="button"
