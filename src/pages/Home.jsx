@@ -69,6 +69,7 @@ export default function Home() {
     let profile = null;
     let doctors = [];
     let sessions = [];
+    let patientAppointments = [];
     let reports = [];
     let prescriptions = [];
     const failed = [];
@@ -95,6 +96,12 @@ export default function Home() {
       }
 
       try {
+        patientAppointments = await API.patientAppointments.list();
+      } catch {
+        failed.push('appointments');
+      }
+
+      try {
         reports = await API.patients.getReports();
       } catch {
         failed.push('reports');
@@ -108,6 +115,7 @@ export default function Home() {
 
       const safeDoctors = Array.isArray(doctors) ? doctors : [];
       const safeSessions = Array.isArray(sessions) ? sessions : [];
+      const safeAppointments = Array.isArray(patientAppointments) ? patientAppointments : [];
       const safeReports = Array.isArray(reports) ? reports : [];
       const safePrescriptions = Array.isArray(prescriptions) ? prescriptions : [];
 
@@ -121,9 +129,10 @@ export default function Home() {
         return bTime - aTime;
       });
 
-      const activeAppointments = sortedSessions.filter(
-        (s) => String(s?.status || '').toUpperCase() !== 'ENDED'
-      ).length;
+      const activeAppointments = safeAppointments.filter((a) => {
+        const status = String(a?.status || '').toUpperCase();
+        return !['COMPLETED', 'CANCELLED', 'DECLINED'].includes(status);
+      }).length;
 
       const completedSessions = sortedSessions.filter(
         (s) => String(s?.status || '').toUpperCase() === 'ENDED'

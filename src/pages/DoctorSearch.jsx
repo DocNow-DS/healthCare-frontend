@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   MagnifyingGlassIcon,
   AdjustmentsHorizontalIcon,
-  StarIcon,
   ExclamationTriangleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
@@ -19,6 +18,13 @@ const DAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRID
 const toDateSafe = (value) => {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const withDoctorPrefix = (name) => {
+  const cleaned = String(name || '').trim();
+  if (!cleaned) return 'Doctor';
+  if (/^dr\.?\s+/i.test(cleaned)) return cleaned;
+  return `Dr. ${cleaned}`;
 };
 
 const parseTimeToMinutes = (raw) => {
@@ -439,11 +445,6 @@ export default function DoctorSearch() {
                   />
                   <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-500" />
                 </div>
-                <div className="flex items-center gap-1 text-[#c79a2b]">
-                  <StarIcon className="h-4 w-4 fill-current" />
-                  <span className="text-lg font-black leading-none">{doctor.rating || '4.8'}</span>
-                  <span className="text-sm font-bold text-slate-600">/ 5</span>
-                </div>
               </div>
               <span className="text-sm font-semibold text-slate-500 flex items-center gap-2">
                 <span className={`h-2.5 w-2.5 rounded-full ${doctor.enabled !== false ? 'bg-emerald-500' : 'bg-slate-400'}`} />
@@ -453,7 +454,7 @@ export default function DoctorSearch() {
 
             <div>
               <h3 className="text-xl md:text-2xl leading-tight font-black text-[#111827]">
-                Dr. {doctor.name || doctor.fullName || doctor.username || 'Doctor'}
+                {withDoctorPrefix(doctor.name || doctor.fullName || doctor.username || 'Doctor')}
               </h3>
               <p className="text-xs text-slate-600 mt-1 leading-5">
                 {doctor.specialization || doctor.specialty || 'General specialist'}
@@ -500,7 +501,7 @@ export default function DoctorSearch() {
               </p>
             </div>
             <p className="text-sm text-[#808e9b] font-bold mb-6">
-              {bookingDoctor.name || bookingDoctor.fullName || bookingDoctor.username} —{' '}
+              {withDoctorPrefix(bookingDoctor.name || bookingDoctor.fullName || bookingDoctor.username)} —{' '}
               {bookingDoctor.specialization || bookingDoctor.specialty || 'Doctor'}
             </p>
             <form onSubmit={submitBooking} className="space-y-4">
