@@ -21,6 +21,8 @@ export default function DoctorAppointments() {
   const [warning, setWarning] = useState('');
   const [appointments, setAppointments] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
+  const [filterKey, setFilterKey] = useState('ALL');
+  const [nowMs, setNowMs] = useState(Date.now());
   const [sessionLinksByAppointment, setSessionLinksByAppointment] = useState({});
   const [generatingByAppointment, setGeneratingByAppointment] = useState({});
   const [actingByAppointment, setActingByAppointment] = useState({});
@@ -54,6 +56,63 @@ export default function DoctorAppointments() {
     loadAppointments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorId]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const filteredAppointments = useMemo(
+    () => appointments.filter((a) => matchesFilter(a, filterKey)),
+    [appointments, filterKey],
+  );
+
+  useEffect(() => {
+    if (filteredAppointments.length === 0) {
+      setExpandedId(null);
+      return;
+    }
+    const stillVisible = filteredAppointments.some((a) => a.id === expandedId);
+    if (!stillVisible) {
+      setExpandedId(filteredAppointments[0].id);
+    }
+  }, [filteredAppointments, expandedId]);
+
+  const nextAppointment = useMemo(() => {
+    const now = nowMs;
+    const candidateStatuses = new Set(['PENDING', 'ACCEPTED', 'RESCHEDULE_REQUESTED']);
+    return appointments
+      .filter((a) => candidateStatuses.has(String(a?.status || '').toUpperCase()))
+      .map((a) => ({
+        raw: a,
+        startMs: new Date(a?.startTime || 0).getTime(),
+      }))
+      .filter((x) => Number.isFinite(x.startMs) && x.startMs > now)
+      .sort((a, b) => a.startMs - b.startMs)[0]?.raw || null;
+  }, [appointments, nowMs]);
+
+  const countdownParts = useMemo(() => {
+    if (!nextAppointment) return null;
+    const startMs = new Date(nextAppointment.startTime).getTime();
+    if (!Number.isFinite(startMs)) return null;
+    const deltaMs = Math.max(0, startMs - nowMs);
+    const totalSeconds = Math.floor(deltaMs / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return { days, hours, minutes, seconds };
+  }, [nextAppointment, nowMs]);
+
+  const countdownUrgency = useMemo(() => {
+    if (!nextAppointment) return 'normal';
+    const startMs = new Date(nextAppointment.startTime).getTime();
+    if (!Number.isFinite(startMs)) return 'normal';
+    const remaining = startMs - nowMs;
+    if (remaining <= 60 * 60 * 1000) return 'critical';
+    if (remaining <= 6 * 60 * 60 * 1000) return 'soon';
+    return 'normal';
+  }, [nextAppointment, nowMs]);
 
   const handleGenerateSessionLink = async (appointment) => {
     if (!appointment?.id) {
@@ -180,14 +239,92 @@ export default function DoctorAppointments() {
         </div>
       ) : null}
 
+      <div className="relative overflow-hidden rounded-3xl border border-[#182C61]/20 bg-gradient-to-br from-[#132b66] via-[#1c3d8c] to-[#365ab3] p-5 md:p-6 text-white shadow-xl shadow-[#182C61]/20">
+        <div className="absolute -top-16 -right-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute -bottom-20 -left-10 h-44 w-44 rounded-full bg-cyan-300/10 blur-2xl" />
+
+        <div className="relative z-10 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.24em] font-black text-white/70">My next appointment</p>
+              <p className="text-sm text-white/85 font-semibold mt-1">Real-time doctor schedule countdown</p>
+            </div>
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 border border-white/30 px-3 py-1 text-[11px] font-black uppercase tracking-wider">
+              <span className={`h-2 w-2 rounded-full ${countdownUrgency === 'critical' ? 'bg-rose-300 animate-ping' : countdownUrgency === 'soon' ? 'bg-amber-300 animate-pulse' : 'bg-emerald-300'}`} />
+              Live
+            </span>
+          </div>
+
+          {nextAppointment && countdownParts ? (
+            <>
+              <div className="rounded-2xl bg-white/10 border border-white/20 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm md:text-base font-black tracking-tight">
+                  {formatPatientDisplayName(nextAppointment)}
+                </p>
+                <p className="text-xs md:text-sm font-semibold text-white/80">{formatAppointmentTimeShort(nextAppointment.startTime)}</p>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { key: 'd', value: countdownParts.days, label: 'Days' },
+                  { key: 'h', value: countdownParts.hours, label: 'Hours' },
+                  { key: 'm', value: countdownParts.minutes, label: 'Minutes' },
+                  { key: 's', value: countdownParts.seconds, label: 'Seconds' },
+                ].map((part) => (
+                  <div
+                    key={part.key}
+                    className={`rounded-xl border border-white/25 bg-white/15 px-3 py-2.5 text-center transition-all duration-300 ${
+                      part.key === 's' ? 'ring-1 ring-white/20 shadow-lg shadow-black/10' : ''
+                    }`}
+                  >
+                    <p className={`text-2xl font-black leading-none tabular-nums ${part.key === 's' ? 'animate-pulse' : ''}`}>
+                      {String(part.value).padStart(2, '0')}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-white/75 mt-1">{part.label}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="rounded-2xl bg-white/10 border border-white/20 p-4">
+              <p className="text-xl font-black tracking-tight">No upcoming appointments</p>
+              <p className="text-sm text-white/75 mt-1">New bookings will appear here automatically.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="bg-white border-2 border-slate-50 rounded-2xl p-5">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {[
+            { key: 'ALL', label: 'All' },
+            { key: 'TODAY', label: 'Today' },
+            { key: 'TOMORROW', label: 'Tomorrow' },
+            { key: 'ACCEPTED', label: 'Accepted' },
+            { key: 'DECLINED', label: 'Declined' },
+          ].map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFilterKey(f.key)}
+              className={`px-3.5 py-1.5 rounded-full border text-xs font-black uppercase tracking-wider transition-all ${
+                filterKey === f.key
+                  ? 'bg-[#182C61] border-[#182C61] text-white shadow-md shadow-[#182C61]/20'
+                  : 'bg-slate-50 border-slate-200 text-[#182C61] hover:bg-slate-100'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <p className="text-sm font-bold text-[#808e9b]">Loading appointments...</p>
-        ) : appointments.length === 0 ? (
+        ) : filteredAppointments.length === 0 ? (
           <p className="text-sm font-bold text-[#808e9b]">No appointments found.</p>
         ) : (
           <div className="space-y-3">
-            {appointments.map((a) => (
+            {filteredAppointments.map((a) => (
               <div
                 key={a.id}
                 role="button"
@@ -196,24 +333,23 @@ export default function DoctorAppointments() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') setExpandedId(a.id);
                 }}
-                className={`rounded-2xl border transition-all cursor-pointer ${
+                className={`rounded-2xl border transition-all duration-200 cursor-pointer ${
                   expandedId === a.id
-                    ? 'border-[#182C61]/25 bg-white shadow-sm'
-                    : 'border-slate-200/80 bg-white hover:border-[#182C61]/20 hover:shadow-sm'
+                    ? 'border-[#182C61]/25 bg-gradient-to-r from-white to-[#f8fbff] shadow-md'
+                    : 'border-slate-200/80 bg-white hover:border-[#182C61]/20 hover:shadow-md hover:-translate-y-0.5'
                 }`}
               >
                 <div className="p-4 md:p-5 flex items-center justify-between gap-3">
                   <div className="min-w-0 flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-[#182C61]/10 text-[#182C61] flex items-center justify-center text-xs font-black tracking-wide shrink-0">
+                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#dbe7ff] to-[#edf3ff] text-[#182C61] flex items-center justify-center text-xs font-black tracking-wide shrink-0">
                       {getPersonInitials(a.patientName || a.patientFullName || a.patientId || 'PT')}
                     </div>
                     <div className="min-w-0">
                       <p className="text-base font-black text-[#182C61] truncate">
-                        {a.patientName || a.patientFullName || `Patient ${a.patientId || 'N/A'}`}
+                        {formatPatientDisplayName(a)}
                       </p>
-                      <p className="text-xs font-semibold text-[#808e9b] truncate">
-                        {formatAppointmentTimeShort(a.startTime)}
-                      </p>
+                      <p className="text-xs font-semibold text-[#6b7280] truncate">Patient ID: {a.patientId || 'N/A'}</p>
+                      <p className="text-xs font-semibold text-[#808e9b] truncate">{formatAppointmentTimeShort(a.startTime)}</p>
                     </div>
                   </div>
 
@@ -225,110 +361,95 @@ export default function DoctorAppointments() {
 
                 {expandedId === a.id ? (
                   <div className="border-t border-slate-100 px-4 md:px-5 pb-4 md:pb-5 pt-4">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                      <div className="lg:col-span-2 rounded-xl border border-slate-100 bg-slate-50/60 p-4 space-y-2">
-                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#808e9b]">
-                          Appointment details
-                        </p>
-                        <p className="text-sm font-black text-[#182C61]">
-                          {a.consultationType || 'Consultation'}
-                        </p>
-                        <p className="text-xs font-semibold text-[#4b5563]">
-                          Patient ID: {a.patientId || 'N/A'}
-                        </p>
-                        <p className="text-xs font-semibold text-[#4b5563]">
-                          Start: {formatAppointmentTime(a.startTime)}
-                        </p>
-                        <p className="text-xs font-semibold text-[#4b5563]">
-                          End: {a.endTime ? formatAppointmentTime(a.endTime) : '—'}
-                        </p>
-                        <p className="text-xs text-[#6b7280]">
-                          {a.notes && String(a.notes).trim() ? a.notes : 'No notes.'}
-                        </p>
-                        {sessionLinksByAppointment[a.id] ? (
-                          <a
-                            href={sessionLinksByAppointment[a.id]}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-block text-xs font-black text-[#182C61] hover:underline"
-                          >
-                            Open session link
-                          </a>
-                        ) : null}
-                      </div>
-
-                      <div className="rounded-xl border border-slate-100 bg-white p-4 space-y-3">
-                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#808e9b]">
-                          Actions
-                        </p>
-
-                        {isPendingApproval(a) ? (
-                          <div className="space-y-2">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDoctorAction(a, 'ACCEPT');
-                              }}
-                              disabled={Boolean(actingByAppointment[a.id])}
-                              className="w-full px-3 py-2.5 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
-                            >
-                              {actingByAppointment[a.id] ? 'Saving...' : 'Approve'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDoctorAction(a, 'DECLINE');
-                              }}
-                              disabled={Boolean(actingByAppointment[a.id])}
-                              className="w-full px-3 py-2.5 rounded-xl text-xs font-black border border-rose-600 text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                            >
-                              Decline
-                            </button>
+                    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                      <div className="grid grid-cols-1 lg:grid-cols-[1.8fr_1fr]">
+                        <div className="p-4 border-b lg:border-b-0 lg:border-r border-slate-200 bg-gradient-to-br from-[#f8fbff] to-[#eef5ff]">
+                          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#4b5a78] mb-2">
+                            Appointment details ✨
+                          </p>
+                          <p className="text-lg font-black text-[#182C61] mb-1">
+                            {String(a.consultationType || 'Consultation').toUpperCase()} {String(a.consultationType || '').toUpperCase() === 'ONLINE' ? '📹' : ''}
+                          </p>
+                          <div className="space-y-1.5 text-sm text-[#334155]">
+                            <p>🪪 Patient ID: {a.patientId || 'N/A'}</p>
+                            <p>🕒 Start: {formatAppointmentTime(a.startTime)}</p>
+                            <p>⏱️ End: {a.endTime ? formatAppointmentTime(a.endTime) : '—'}</p>
+                            <p>📝 {a.notes && String(a.notes).trim() ? a.notes : 'No notes.'}</p>
                           </div>
-                        ) : null}
+                        </div>
 
-                        {canGenerateSession(a) ? (
-                          <div className="space-y-2">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleGenerateSessionLink(a);
-                              }}
-                              disabled={Boolean(generatingByAppointment[a.id]) || Boolean(actingByAppointment[a.id])}
-                              className="w-full px-3 py-2.5 rounded-xl text-xs font-black bg-[#182C61] text-white hover:bg-[#182C61]/85 disabled:opacity-60"
-                            >
-                              {generatingByAppointment[a.id] ? 'Generating...' : 'Generate Link'}
-                            </button>
+                        <div className="p-4 flex flex-col justify-between bg-gradient-to-b from-white to-[#f9fbff]">
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#4b5a78] mb-3">Actions ⚡</p>
 
-                            {sessionLinksByAppointment[a.id] ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCopyLink(sessionLinksByAppointment[a.id]);
-                                }}
-                                className="w-full px-3 py-2.5 rounded-xl text-xs font-black border border-[#182C61] text-[#182C61] hover:bg-[#182C61]/5"
-                              >
-                                Copy Link
-                              </button>
+                            {isPendingApproval(a) ? (
+                              <div className="space-y-2 mb-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDoctorAction(a, 'ACCEPT');
+                                  }}
+                                  disabled={Boolean(actingByAppointment[a.id])}
+                                  className="w-full px-3 py-2.5 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                                >
+                                  {actingByAppointment[a.id] ? 'Saving...' : 'Approve'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDoctorAction(a, 'DECLINE');
+                                  }}
+                                  disabled={Boolean(actingByAppointment[a.id])}
+                                  className="w-full px-3 py-2.5 rounded-xl text-xs font-black border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                                >
+                                  Decline
+                                </button>
+                              </div>
                             ) : null}
 
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCreateCarePlan(a);
-                              }}
-                              className="w-full px-3 py-2.5 rounded-xl text-xs font-black border border-[#182C61] text-[#182C61] hover:bg-[#182C61]/5"
-                            >
-                              Create Care Plans
-                            </button>
+                            {canGenerateSession(a) ? (
+                              <div className="space-y-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleGenerateSessionLink(a);
+                                  }}
+                                  disabled={Boolean(generatingByAppointment[a.id]) || Boolean(actingByAppointment[a.id])}
+                                  className="w-full px-3 py-2.5 rounded-xl text-sm font-black bg-gradient-to-r from-[#182C61] to-[#24448e] text-white hover:brightness-105 disabled:opacity-60 shadow-md shadow-[#182C61]/25"
+                                >
+                                  {generatingByAppointment[a.id] ? 'Generating...' : '🔗 Generate Link'}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCreateCarePlan(a);
+                                  }}
+                                  className="w-full px-3 py-2.5 rounded-xl text-sm font-black bg-gradient-to-r from-[#182C61] to-[#24448e] text-white hover:brightness-105 shadow-md shadow-[#182C61]/25"
+                                >
+                                  🧾 Create Care Plans
+                                </button>
+
+                                {sessionLinksByAppointment[a.id] ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopyLink(sessionLinksByAppointment[a.id]);
+                                    }}
+                                    className="w-full px-3 py-2 rounded-lg text-xs font-black border border-[#182C61]/30 text-[#182C61] hover:bg-[#182C61]/5"
+                                  >
+                                    📋 Copy Link
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </div>
-                        ) : null}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -398,4 +519,45 @@ function canGenerateSession(appointment) {
 function isPendingApproval(appointment) {
   const status = String(appointment?.status || '').toUpperCase();
   return status === 'PENDING' || status === 'RESCHEDULE_REQUESTED';
+}
+
+function isSameDay(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function matchesFilter(appointment, filterKey) {
+  if (filterKey === 'ALL') return true;
+
+  const status = String(appointment?.status || '').toUpperCase();
+  if (filterKey === 'ACCEPTED') return status === 'ACCEPTED';
+  if (filterKey === 'DECLINED') return status === 'DECLINED';
+
+  const start = new Date(appointment?.startTime || 0);
+  if (Number.isNaN(start.getTime())) return false;
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+
+  if (filterKey === 'TODAY') return isSameDay(start, now);
+  if (filterKey === 'TOMORROW') return isSameDay(start, tomorrow);
+
+  return true;
+}
+
+function formatPatientDisplayName(appointment) {
+  const rawName = String(
+    appointment?.patientName ||
+      appointment?.patientFullName ||
+      appointment?.name ||
+      appointment?.patientId ||
+      'N/A',
+  ).trim();
+  const nameWithoutPatientLabel = rawName.replace(/^patient\s+/i, '').trim();
+  const gender = String(appointment?.patientGender || appointment?.gender || '').trim().toUpperCase();
+  const prefix = gender.startsWith('M') ? 'Mr.' : gender.startsWith('F') ? 'Miss' : '';
+  return prefix ? `${prefix} ${nameWithoutPatientLabel}` : nameWithoutPatientLabel;
 }
