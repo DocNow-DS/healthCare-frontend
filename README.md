@@ -1,29 +1,47 @@
-# React + Vite
+# Healthcare Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite frontend for the AI-Enabled Smart Healthcare Platform.
 
-Currently, two official plugins are available:
+## Prerequisites
+- Node.js 18+
+- npm 9+
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Install Dependencies
+```bash
+npm install
+```
 
-## React Compiler
+## Environment Setup
+Create `.env` and set backend URLs:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```env
+VITE_PATIENT_SERVICE_URL=http://localhost:8081
+VITE_DOCTOR_SERVICE_URL=http://localhost:8082
+VITE_PAYMENT_SERVICE_URL=http://localhost:8085
+VITE_TELEMEDICINE_SERVICE_URL=http://localhost:8083
+```
 
-## Expanding the ESLint configuration
+If your backend uses different ports, update the values above.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Run in Development
+```bash
+npm run dev
+```
 
-## Backend configuration (microservices)
+Frontend runs at:
+- http://localhost:5173
 
-This frontend reads backend URLs from a single config module: `src/config/api.js`.
+## Build for Production
+```bash
+npm run build
+npm run preview
+```
 
-- Copy `.env.example` to `.env` and set the URLs for your environment.
-- For the current backend service in this repo (Patient Management + Auth), set:
-	- `VITE_PATIENT_SERVICE_URL=http://localhost:8081`
+## Lint
+```bash
+npm run lint
+```
 
-Run:
-
-- `npm install`
-- `npm run dev`
+## Deployment Notes
+- Ensure required backend services are running before opening the app.
+- Keep API base URLs in `.env` aligned with your deployment environment.
