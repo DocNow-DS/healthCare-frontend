@@ -16,6 +16,105 @@ const formatWhen = (iso) => {
   }
 };
 
+const formatWhenShort = (iso) => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return String(iso);
+  }
+};
+
+const getDoctorInitials = (name) => {
+  const cleaned = String(name || '').trim();
+  if (!cleaned) return 'DR';
+  const parts = cleaned.split(/[\s_.-]+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+};
+
+const getStatusMeta = (status) => {
+  const normalized = String(status || '').toUpperCase();
+  if (normalized === 'ACCEPTED') {
+    return {
+      label: '✅ Accepted',
+      badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      dot: 'bg-emerald-500',
+      avatar: 'from-emerald-100 to-teal-100 text-emerald-800',
+    };
+  }
+  if (normalized === 'DECLINED') {
+    return {
+      label: '❌ Declined',
+      badge: 'bg-rose-50 text-rose-700 border-rose-200',
+      dot: 'bg-rose-500',
+      avatar: 'from-rose-100 to-pink-100 text-rose-800',
+    };
+  }
+  if (normalized === 'CANCELLED') {
+    return {
+      label: '⛔ Cancelled',
+      badge: 'bg-slate-100 text-slate-700 border-slate-200',
+      dot: 'bg-slate-500',
+      avatar: 'from-slate-100 to-slate-200 text-slate-700',
+    };
+  }
+  if (normalized === 'COMPLETED') {
+    return {
+      label: '🎉 Completed',
+      badge: 'bg-sky-50 text-sky-700 border-sky-200',
+      dot: 'bg-sky-500',
+      avatar: 'from-sky-100 to-cyan-100 text-sky-800',
+    };
+  }
+  if (normalized === 'PENDING') {
+    return {
+      label: '⏳ Pending',
+      badge: 'bg-amber-50 text-amber-700 border-amber-200',
+      dot: 'bg-amber-500',
+      avatar: 'from-amber-100 to-yellow-100 text-amber-800',
+    };
+  }
+  return {
+    label: `🗂️ ${normalized || 'Unknown'}`,
+    badge: 'bg-slate-100 text-slate-700 border-slate-200',
+    dot: 'bg-slate-500',
+    avatar: 'from-slate-100 to-slate-200 text-slate-700',
+  };
+};
+
+const FILTER_OPTIONS = [
+  { key: 'ALL', label: 'All', emoji: '', active: 'bg-[#182C61] border-[#182C61] text-white shadow-lg shadow-[#182C61]/20', idle: 'bg-[#eaf1ff] border-[#d7e4ff] text-[#182C61] hover:bg-[#dfeaff]' },
+  { key: 'PENDING', label: 'Pending', emoji: '⏳', active: 'bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-500/25', idle: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' },
+  { key: 'ACCEPTED', label: 'Accepted', emoji: '✅', active: 'bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-600/25', idle: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' },
+  { key: 'DECLINED', label: 'Declined', emoji: '❌', active: 'bg-rose-600 border-rose-600 text-white shadow-lg shadow-rose-600/25', idle: 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100' },
+];
+
+const resolveDoctorDisplayName = (doctor) => {
+  if (!doctor) return '';
+  return String(
+    doctor?.username ||
+      doctor?.name ||
+      doctor?.fullName ||
+      doctor?.doctorName ||
+      doctor?.email ||
+      '',
+  ).trim();
+};
+
+const withDoctorPrefix = (name) => {
+  const cleaned = String(name || '').trim();
+  if (!cleaned) return 'Doctor';
+  if (/^dr\.?\s+/i.test(cleaned)) return cleaned;
+  return `Dr. ${cleaned}`;
+};
+
 function AnimatedProgressBar({ targetPercent, status }) {
   const target = Number.isFinite(targetPercent) ? Math.max(0, Math.min(100, targetPercent)) : 0;
   const [percent, setPercent] = useState(target);
@@ -47,32 +146,60 @@ function AnimatedProgressBar({ targetPercent, status }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
 
-  const isLive = status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'DECLINED';
+  const normalizedStatus = String(status || '').toUpperCase();
+  const isLive = !['COMPLETED', 'CANCELLED', 'DECLINED'].includes(normalizedStatus);
+  const isDone = normalizedStatus === 'COMPLETED' || percent >= 100;
+  const isStopped = normalizedStatus === 'CANCELLED' || normalizedStatus === 'DECLINED';
 
-  const barColor =
-    percent === 100
-      ? 'bg-emerald-500'
-      : percent >= 70
-        ? 'bg-[#182C61]'
-        : percent >= 45
-          ? 'bg-[#eb2f06]'
-          : 'bg-[#eb2f06]';
+  const progressTone = isStopped
+    ? 'from-rose-500 to-orange-500'
+    : isDone
+      ? 'from-emerald-500 to-teal-500'
+      : 'from-sky-500 via-indigo-500 to-[#182C61]';
+
+  const statusText = isStopped ? normalizedStatus.toLowerCase() : isDone ? 'completed' : 'in progress';
+  const statusBadgeTone = isStopped
+    ? 'bg-rose-500/20 text-rose-100 ring-rose-300/40'
+    : isDone
+      ? 'bg-emerald-500/20 text-emerald-100 ring-emerald-300/40'
+      : 'bg-sky-500/20 text-sky-100 ring-sky-300/40';
 
   return (
-    <div className="w-full">
-      <div className="h-3.5 rounded-full bg-slate-100 overflow-hidden relative">
+    <div className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 md:p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/60">Treatment progress</p>
+          <p className="text-xs text-white/70 mt-1">Live appointment lifecycle status</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-[10px] font-black uppercase tracking-widest rounded-full px-2.5 py-1 ring-1 ${statusBadgeTone}`}>
+            {statusText}
+          </span>
+          <span className="text-sm font-black text-white">{percent}%</span>
+        </div>
+      </div>
+
+      <div className="h-3 rounded-full bg-white/15 overflow-hidden relative">
         <div
-          className={`h-full rounded-full transition-[width] duration-500 ease-out ${barColor} ${
-            isLive ? 'animate-pulse' : ''
-          }`}
+          className={`absolute inset-y-0 left-0 rounded-full bg-gradient-to-r ${progressTone} transition-[width] duration-500 ease-out`}
           style={{ width: `${percent}%` }}
         />
+        <div
+          className={`absolute inset-y-0 left-0 rounded-full bg-white/20 ${isLive ? 'animate-pulse' : ''}`}
+          style={{ width: `${percent}%`, opacity: isLive ? 1 : 0 }}
+        />
       </div>
-      <div className="mt-2 text-[11px] font-black uppercase tracking-widest text-[#808e9b] flex items-center justify-between">
-        <span>Progress</span>
-        <span>
-          {percent}% {isLive ? '· updating' : ''}
-        </span>
+
+      <div className="grid grid-cols-3 gap-2 text-[10px] uppercase tracking-wider font-bold">
+        <div className={`rounded-lg px-2 py-1 text-center ${percent >= 1 ? 'bg-white/10 text-white/90' : 'bg-white/5 text-white/50'}`}>
+          Scheduled
+        </div>
+        <div className={`rounded-lg px-2 py-1 text-center ${percent >= 50 ? 'bg-white/10 text-white/90' : 'bg-white/5 text-white/50'}`}>
+          Confirmed
+        </div>
+        <div className={`rounded-lg px-2 py-1 text-center ${isDone ? 'bg-emerald-500/20 text-emerald-100' : 'bg-white/5 text-white/50'}`}>
+          Completed
+        </div>
       </div>
     </div>
   );
@@ -82,10 +209,12 @@ export default function PatientAppointments() {
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState('');
   const [appointments, setAppointments] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [expandedId, setExpandedId] = useState(null);
   const [userPickedId, setUserPickedId] = useState(null);
   const userPickedIdRef = useRef(userPickedId);
   const expandedIdRef = useRef(expandedId);
+  const doctorNameCacheRef = useRef(new Map());
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
 
@@ -103,18 +232,51 @@ export default function PatientAppointments() {
     try {
       const list = await API.patientAppointments.list();
       const normalized = Array.isArray(list) ? list : [];
-      normalized.sort((a, b) => {
+      const doctorIds = [...new Set(
+        normalized
+          .map((a) => String(a?.doctorId || '').trim())
+          .filter(Boolean),
+      )];
+
+      const missingDoctorIds = doctorIds.filter((id) => !doctorNameCacheRef.current.has(id));
+      if (missingDoctorIds.length > 0) {
+        const doctorResults = await Promise.allSettled(
+          missingDoctorIds.map((doctorId) => API.doctors.getById(doctorId)),
+        );
+        doctorResults.forEach((result, index) => {
+          const doctorId = missingDoctorIds[index];
+          if (result.status === 'fulfilled') {
+            const resolvedName = resolveDoctorDisplayName(result.value);
+            doctorNameCacheRef.current.set(doctorId, resolvedName || doctorId);
+          } else {
+            doctorNameCacheRef.current.set(doctorId, doctorId);
+          }
+        });
+      }
+
+      const normalizedWithDoctorName = normalized.map((a) => {
+        const doctorId = String(a?.doctorId || '').trim();
+        const resolvedName =
+          resolveDoctorDisplayName(a) ||
+          (doctorId ? doctorNameCacheRef.current.get(doctorId) : '') ||
+          '';
+        return {
+          ...a,
+          doctorName: resolvedName || 'Doctor',
+        };
+      });
+      normalizedWithDoctorName.sort((a, b) => {
         const aTime = new Date(a?.startTime || a?.createdAt || 0).getTime();
         const bTime = new Date(b?.startTime || b?.createdAt || 0).getTime();
         return bTime - aTime;
       });
-      setAppointments(normalized);
+      setAppointments(normalizedWithDoctorName);
 
       // If the user has not manually picked an appointment yet, auto-select the
       // nearest upcoming one (or latest if there is no future appointment).
-      if (!userPickedIdRef.current && normalized.length > 0) {
+      if (!userPickedIdRef.current && normalizedWithDoctorName.length > 0) {
         const now = Date.now();
-        const withTimes = normalized
+        const withTimes = normalizedWithDoctorName
           .map((a) => ({
             raw: a,
             time: new Date(a?.startTime || a?.createdAt || 0).getTime(),
@@ -132,7 +294,7 @@ export default function PatientAppointments() {
             candidate = withTimes[0].raw;
           }
         } else {
-          candidate = normalized[0];
+          candidate = normalizedWithDoctorName[0];
         }
 
         if (candidate && candidate.id !== expandedIdRef.current) {
@@ -151,9 +313,13 @@ export default function PatientAppointments() {
     loadAppointments();
   }, [loadAppointments]);
 
+  const filteredAppointments = useMemo(() => {
+    if (statusFilter === 'ALL') return appointments;
+    return appointments.filter((a) => String(a?.status || '').toUpperCase() === statusFilter);
+  }, [appointments, statusFilter]);
   const expandedAppointment = useMemo(
-    () => appointments.find((a) => a.id === expandedId) || null,
-    [appointments, expandedId],
+    () => filteredAppointments.find((a) => a.id === expandedId) || null,
+    [filteredAppointments, expandedId],
   );
 
   const isCancelableStatus = (status) => {
@@ -210,43 +376,22 @@ export default function PatientAppointments() {
       <div className="flex items-center justify-between">
         <div className="max-w-lg">
           <h1 className="text-3xl font-black text-[#182C61]">My appointments</h1>
-          <p className="text-[#808e9b] mt-1 font-bold">
-            Booked visits from the appointment service for your signed-in account (JWT).
-          </p>
         </div>
         <button
           type="button"
           onClick={loadAppointments}
-          className="px-4 py-2 bg-[#182C61] text-white rounded-xl font-black text-sm hover:bg-[#182C61]/85"
+          className="px-4 py-2 bg-gradient-to-r from-[#182C61] to-[#27408f] text-white rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#182C61]/30 transition-all"
         >
-          Refresh
+          Refresh 🔄
         </button>
       </div>
 
       {expandedAppointment && (
-        <div className="bg-[#182C61] rounded-3xl border-2 border-[#182C61]/10 shadow-2xl p-6 md:p-8 text-white space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="space-y-1">
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-white/60">Selected appointment</p>
-              <h2 className="text-2xl font-black tracking-tight">
-                {expandedAppointment.consultationType || 'Consultation'} ·{' '}
-                {formatWhen(expandedAppointment.startTime)}
-              </h2>
-              <p className="text-xs font-mono text-white/70">
-                Doctor ID: {expandedAppointment.doctorId || '—'} · ID: {expandedAppointment.id}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-white/80">
-              <CalendarDaysIcon className="h-4 w-4" />
-              {expandedAppointment.status || '—'}
-            </div>
+        <div className="bg-gradient-to-r from-[#182C61] via-[#243b78] to-[#304e9a] rounded-3xl border-2 border-[#182C61]/10 shadow-2xl p-6 md:p-8 text-white space-y-4">
+          <div className="space-y-1">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-white/60">Selected appointment</p>
+            <h2 className="text-xl font-black tracking-tight">Progress overview 🚀</h2>
           </div>
-
-          {expandedAppointment.notes ? (
-            <p className="text-sm text-white/80 border-l-2 border-white/20 pl-3">
-              {expandedAppointment.notes}
-            </p>
-          ) : null}
 
           <div className="pt-2">
             <AnimatedProgressBar
@@ -268,14 +413,34 @@ export default function PatientAppointments() {
         </div>
       ) : null}
 
-      <div className="bg-white border-2 border-slate-50 rounded-2xl p-5">
+      <div className="bg-white border-2 border-slate-100 rounded-2xl p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center gap-2 bg-slate-50 rounded-2xl p-2">
+          {FILTER_OPTIONS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setStatusFilter(item.key)}
+              className={`px-3 py-1.5 rounded-full border text-xs font-black uppercase tracking-wider transition-all ${
+                statusFilter === item.key
+                  ? item.active
+                  : item.idle
+              }`}
+            >
+              <span className="mr-1">{item.emoji}</span>
+              {item.label}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <p className="text-sm font-bold text-[#808e9b]">Loading appointments...</p>
-        ) : appointments.length === 0 ? (
+        ) : filteredAppointments.length === 0 ? (
           <p className="text-sm font-bold text-[#808e9b]">No appointments yet. Book a specialist from the dashboard.</p>
         ) : (
           <div className="space-y-3">
-            {appointments.map((a) => (
+            {filteredAppointments.map((a) => {
+              const statusMeta = getStatusMeta(a.status);
+              return (
               <div
                 key={a.id}
                 role="button"
@@ -290,55 +455,58 @@ export default function PatientAppointments() {
                     setExpandedId(a.id);
                   }
                 }}
-                className={`p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 cursor-pointer transition-colors ${
-                  expandedId === a.id ? 'border-[#182C61]/30 bg-white' : ''
+                className={`rounded-2xl border transition-all duration-200 cursor-pointer ${
+                  expandedId === a.id
+                    ? 'border-[#182C61]/25 bg-gradient-to-r from-white to-[#f9fbff] shadow-md'
+                    : 'border-slate-200/80 bg-white hover:border-[#182C61]/20 hover:shadow-md hover:-translate-y-0.5'
                 }`}
               >
-                <div className="min-w-0">
-                  <p className="text-sm font-black text-[#182C61]">
-                    Doctor ID: <span className="font-mono text-xs">{a.doctorId || '—'}</span>
-                  </p>
-                  <p className="text-xs font-bold text-[#808e9b] mt-1">
-                    {a.consultationType ? `${a.consultationType} · ` : ''}
-                    {formatWhen(a.startTime)}
-                    {a.endTime ? ` – ${formatWhen(a.endTime)}` : ''}
-                  </p>
-                  {a.notes ? (
-                    <p className="text-xs text-[#808e9b] mt-1 line-clamp-2">{a.notes}</p>
-                  ) : null}
-                  {a.progressLabel != null && a.progressLabel !== '' ? (
-                    <p className="text-[10px] font-black uppercase tracking-wider text-[#eb2f06] mt-2">
-                      {a.progressLabel}
-                      {typeof a.progressPercent === 'number' ? ` (${a.progressPercent}%)` : ''}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[#182C61] shrink-0">
-                  <CalendarDaysIcon className="h-4 w-4" />
-                  {a.status || '—'}
+                <div className="p-4 md:p-5 flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex items-center gap-3">
+                    <div className={`h-10 w-10 rounded-full bg-gradient-to-br ${statusMeta.avatar} flex items-center justify-center text-xs font-black tracking-wide shrink-0`}>
+                      {getDoctorInitials(a.doctorName)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-base font-black text-[#182C61] truncate">
+                        {withDoctorPrefix(a.doctorName || a.doctorFullName || a.doctor || 'Doctor')}
+                      </p>
+                      <p className="text-xs font-semibold text-[#808e9b] truncate">
+                        {formatWhenShort(a.startTime)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold ${statusMeta.badge}`}>
+                    <span className={`h-2 w-2 rounded-full ${statusMeta.dot} ${String(a?.status || '').toUpperCase() === 'PENDING' ? 'animate-pulse' : ''}`} />
+                    {statusMeta.label}
+                  </div>
                 </div>
 
                 {expandedId === a.id ? (
-                  <div className="w-full mt-3 bg-white border border-slate-100 rounded-xl p-4">
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#808e9b]">
+                  <div className="border-t border-slate-100 px-4 md:px-5 pb-4 md:pb-5 pt-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                      <div className="lg:col-span-2 rounded-xl border border-slate-100 bg-slate-50/60 p-4 space-y-2">
+                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#808e9b]">
                           Appointment details
                         </p>
                         <p className="text-sm font-black text-[#182C61]">
-                          {a.consultationType || 'Consultation'} · {formatWhen(a.startTime)}
+                          {a.consultationType || 'Consultation'}
                         </p>
-                        <p className="text-xs font-bold text-[#808e9b]">
-                          Start: {formatWhen(a.startTime)} {a.endTime ? `· End: ${formatWhen(a.endTime)}` : ''}
+                        <p className="text-xs font-semibold text-[#4b5563]">
+                          Start: {formatWhen(a.startTime)}
                         </p>
-                        {a.notes ? (
-                          <p className="text-xs text-[#808e9b] line-clamp-none">{a.notes}</p>
-                        ) : (
-                          <p className="text-xs text-[#808e9b]">No notes.</p>
-                        )}
+                        <p className="text-xs font-semibold text-[#4b5563]">
+                          End: {a.endTime ? formatWhen(a.endTime) : '—'}
+                        </p>
+                        <p className="text-xs text-[#6b7280]">
+                          {a.notes && String(a.notes).trim() ? a.notes : 'No notes.'}
+                        </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="rounded-xl border border-slate-100 bg-white p-4 space-y-3">
+                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#808e9b]">
+                          Actions
+                        </p>
                         <button
                           type="button"
                           onClick={(e) => {
@@ -346,11 +514,11 @@ export default function PatientAppointments() {
                             handleCancelAppointment(a);
                           }}
                           disabled={actionLoading || !isCancelableStatus(a.status)}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border-2 border-emerald-500/20 hover:bg-emerald-500/10 disabled:opacity-50 disabled:hover:bg-white transition-all"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 disabled:hover:bg-emerald-50 transition-colors"
                           title="Cancel appointment"
                         >
-                          <XCircleIcon className="h-4 w-4 text-emerald-600" />
-                          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Cancel</span>
+                          <XCircleIcon className="h-4 w-4" />
+                          <span className="text-xs font-black uppercase tracking-wide">Cancel</span>
                         </button>
 
                         <button
@@ -360,24 +528,24 @@ export default function PatientAppointments() {
                             handleDeleteAppointment(a);
                           }}
                           disabled={actionLoading}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border-2 border-[#eb2f06]/20 hover:bg-[#eb2f06]/10 disabled:opacity-50 disabled:hover:bg-white transition-all"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 disabled:opacity-50 disabled:hover:bg-rose-50 transition-colors"
                           title="Delete appointment"
                         >
-                          <TrashIcon className="h-4 w-4 text-[#eb2f06]" />
-                          <span className="text-[10px] font-black uppercase tracking-widest text-[#eb2f06]">Delete</span>
+                          <TrashIcon className="h-4 w-4" />
+                          <span className="text-xs font-black uppercase tracking-wide">Delete</span>
                         </button>
                       </div>
                     </div>
 
                     {actionError ? (
-                      <div className="mt-3 bg-red-500/10 border border-red-500/30 text-red-100 rounded-xl p-3 text-sm font-semibold">
+                      <div className="mt-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-sm font-semibold">
                         {actionError}
                       </div>
                     ) : null}
                   </div>
                 ) : null}
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>
