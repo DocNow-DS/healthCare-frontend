@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../config/api';
 import { ShieldCheckIcon, VideoCameraIcon } from '@heroicons/react/24/solid';
+import {
+   ChatBubbleLeftRightIcon,
+   MicrophoneIcon,
+   PhoneXMarkIcon,
+   SpeakerWaveIcon,
+   UserGroupIcon,
+} from '@heroicons/react/24/outline';
 
 function readAuthUser() {
    try {
@@ -41,6 +48,10 @@ export default function VideoConsultation() {
    const [selectedSessionDate, setSelectedSessionDate] = useState('');
 
    const [jitsiUrl, setJitsiUrl] = useState('');
+   const [selectedScheduleKey, setSelectedScheduleKey] = useState('');
+   const [micMuted, setMicMuted] = useState(false);
+   const [speakerMuted, setSpeakerMuted] = useState(false);
+   const [videoMuted, setVideoMuted] = useState(false);
    const [frameLoaded, setFrameLoaded] = useState(false);
    const [embedStuck, setEmbedStuck] = useState(false);
    const [isBusy, setIsBusy] = useState(false);
@@ -146,6 +157,51 @@ export default function VideoConsultation() {
          }));
    }, [dateFilteredConsultations]);
 
+   const consultationFeed = useMemo(() => {
+      const rows = [];
+      consultationsByDate.forEach((group) => {
+         group.list.forEach((item) => rows.push(item));
+      });
+      return rows.slice(0, 12);
+   }, [consultationsByDate]);
+
+   const scheduleRows = useMemo(() => {
+      return consultationFeed.map((item, idx) => ({
+         ...item,
+         rowKey: item?.id ? String(item.id) : `${item?.appointmentId || 'na'}-${idx}`,
+      }));
+   }, [consultationFeed]);
+
+   const dayFilteredScheduleRows = useMemo(() => {
+      if (!selectedSessionDate) return scheduleRows;
+      return scheduleRows.filter((row) => {
+         const day = toDateKey(row?.scheduledAt || row?.startedAt || row?.createdAt);
+         return day === selectedSessionDate;
+      });
+   }, [scheduleRows, selectedSessionDate]);
+
+   const selectedSchedule = useMemo(() => {
+      if (!selectedScheduleKey) return dayFilteredScheduleRows[0] || null;
+      return dayFilteredScheduleRows.find((row) => row.rowKey === selectedScheduleKey) || dayFilteredScheduleRows[0] || null;
+   }, [dayFilteredScheduleRows, selectedScheduleKey]);
+
+   const selectedScheduleDateLabel = useMemo(() => {
+      if (!selectedSchedule) return 'No schedule selected';
+      return formatAppointmentTime(selectedSchedule?.scheduledAt || selectedSchedule?.startedAt || selectedSchedule?.createdAt);
+   }, [selectedSchedule]);
+
+   useEffect(() => {
+      if (!dayFilteredScheduleRows.length) {
+         setSelectedScheduleKey('');
+         return;
+      }
+
+      const hasExisting = dayFilteredScheduleRows.some((row) => row.rowKey === selectedScheduleKey);
+      if (!hasExisting) {
+         setSelectedScheduleKey(dayFilteredScheduleRows[0].rowKey);
+      }
+   }, [dayFilteredScheduleRows, selectedScheduleKey]);
+
    const approvedAppointments = useMemo(() => {
       return doctorAppointments.filter((a) => String(a?.status || '').toUpperCase() === 'ACCEPTED');
    }, [doctorAppointments]);
@@ -161,15 +217,15 @@ export default function VideoConsultation() {
          const url = new URL(jitsiUrl);
          const hashParams = new URLSearchParams((url.hash || '').replace(/^#/, ''));
          hashParams.set('config.prejoinPageEnabled', 'false');
-         hashParams.set('config.startWithAudioMuted', 'false');
-         hashParams.set('config.startWithVideoMuted', 'false');
+         hashParams.set('config.startWithAudioMuted', micMuted ? 'true' : 'false');
+         hashParams.set('config.startWithVideoMuted', videoMuted ? 'true' : 'false');
          hashParams.set('config.disableDeepLinking', 'true');
          url.hash = hashParams.toString();
          return url.toString();
       } catch {
          return jitsiUrl;
       }
-   }, [jitsiUrl]);
+   }, [jitsiUrl, micMuted, videoMuted]);
 
    useEffect(() => {
       if (!jitsiUrl) {
@@ -346,239 +402,269 @@ export default function VideoConsultation() {
       }
    };
 
+   const handleEndSession = () => {
+      setJitsiUrl('');
+      setSelectedScheduleKey('');
+      setFrameLoaded(false);
+      setEmbedStuck(false);
+   };
+
    return (
-      <div className="h-[calc(100vh-60px)] flex flex-col space-y-2 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-         <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+      <div className="space-y-3 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <div className="flex items-center space-x-3">
                <div className="h-8 w-8 bg-primary-500 rounded-lg flex items-center justify-center shadow-lg shadow-primary-500/20">
                   <VideoCameraIcon className="h-5 w-5 text-white" />
                </div>
                <div>
-                  <h1 className="text-xl font-black text-primary-500 tracking-tighter">Consultation</h1>
-                  <p className="text-[#808e9b] font-black uppercase tracking-widest text-[7px] flex items-center">
-                     <span className="h-1 w-1 rounded-full bg-accent-red mr-1 animate-pulse"></span>
-                     AES-256 Secure
-                  </p>
+                  <h1 className="text-lg font-black text-primary-500 tracking-tight">Consultation Room</h1>
+                  <p className="text-[#808e9b] font-black uppercase tracking-widest text-[8px]">Live collaboration</p>
                </div>
+            </div>
+            <div className="text-[10px] font-black px-2 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700">
+               {formatDigitalTime(digitalNow)}
             </div>
          </div>
 
          {error ? (
-            <div className="bg-white border border-slate-50 px-3 py-2 rounded-lg shadow-sm text-[10px] font-black text-accent-red uppercase tracking-widest">
+            <div className="bg-rose-50 border border-rose-200 px-3 py-2 rounded-lg text-[10px] font-black text-rose-700 uppercase tracking-widest">
                {error}
             </div>
          ) : null}
 
          {isDoctor ? (
-            <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-100 p-4 rounded-xl shadow-sm">
-               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
-                  <div>
-                     <h3 className="text-sm font-black text-primary-500 tracking-tight">Generate Consultation Link</h3>
-                     <p className="text-[10px] font-bold text-[#808e9b] uppercase tracking-widest mt-0.5">
-                        Only approved appointments can generate consultation links
-                     </p>
-                  </div>
-                  <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                     <span className="px-2 py-1 rounded-full bg-primary-50 text-primary-500 border border-primary-100">
-                        Appointments: {doctorAppointments.length}
-                     </span>
-                     <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                        Approved: {patientsLoading ? '…' : approvedAppointments.length}
-                     </span>
-                  </div>
+            <div className="bg-white border border-slate-100 p-3 rounded-xl shadow-sm">
+               <div className="flex flex-col md:flex-row md:items-center gap-2 md:justify-between mb-2">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-primary-500">Generate Consultation Link</h3>
+                  <span className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest">
+                     Approved {patientsLoading ? '…' : approvedAppointments.length}
+                  </span>
                </div>
-
-               {patientsError ? (
-                  <div className="text-[10px] font-bold text-accent-red mb-2">{patientsError}</div>
-               ) : null}
-
-               {!patientsLoading && approvedAppointments.length === 0 ? (
-                  <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-bold text-amber-800 uppercase tracking-widest">
-                     No approved appointments found. Approve an appointment first.
-                  </div>
-               ) : null}
-
                <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                  <div className="md:col-span-2">
-                     <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-1">Approved Appointment</label>
-                     <select
-                        value={selectedApprovedAppointmentId}
-                        onChange={(e) => setSelectedApprovedAppointmentId(e.target.value)}
-                        disabled={patientsLoading || isBusy || approvedAppointments.length === 0}
-                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 text-xs text-[#1e272e] font-black transition-all"
-                     >
-                        <option value="">{patientsLoading ? 'Loading appointments…' : 'Select approved appointment…'}</option>
-                        {approvedAppointments.map((a) => {
-                           const pid = resolveAppointmentPatientId(a) || 'N/A';
-                           const label = `#${a?.id} - Patient ${pid} - ${formatAppointmentTime(a?.startTime)}`;
-                           return (
-                              <option key={a?.id} value={a?.id}>
-                                 {label}
-                              </option>
-                           );
-                        })}
-                     </select>
+                  <select
+                     value={selectedApprovedAppointmentId}
+                     onChange={(e) => setSelectedApprovedAppointmentId(e.target.value)}
+                     disabled={patientsLoading || isBusy || approvedAppointments.length === 0}
+                     className="md:col-span-2 w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-[#1e272e]"
+                  >
+                     <option value="">{patientsLoading ? 'Loading appointments…' : 'Select approved appointment…'}</option>
+                     {approvedAppointments.map((a) => {
+                        const pid = resolveAppointmentPatientId(a) || 'N/A';
+                        return (
+                           <option key={a?.id} value={a?.id}>
+                              #{a?.id} - Patient {pid}
+                           </option>
+                        );
+                     })}
+                  </select>
+                  <div className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-[#1e272e]">
+                     {resolveAppointmentPatientId(selectedApprovedAppointment) || '—'}
                   </div>
-
-                  <div>
-                     <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-1">Patient</label>
-                     <div className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-[#1e272e] font-black">
-                        {resolveAppointmentPatientId(selectedApprovedAppointment) || '—'}
-                     </div>
-                  </div>
-
-                  <div>
-                     <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-1">Appointment Time</label>
-                     <div className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-[#1e272e] font-black">
-                        {formatAppointmentTime(selectedApprovedAppointment?.startTime)}
-                     </div>
-                     <div className="mt-1.5 rounded-md bg-slate-900 px-2 py-1 text-center">
-                        <span className="text-[10px] font-black tracking-widest text-emerald-300">
-                           {formatDigitalTime(digitalNow)}
-                        </span>
-                     </div>
-                  </div>
-               </div>
-
-               <div className="mt-3 flex justify-end">
                   <button
                      type="button"
                      onClick={handleGenerateLink}
                      disabled={isBusy || !selectedApprovedAppointmentId || approvedAppointments.length === 0}
-                     className="px-5 py-2.5 text-[10px] font-black rounded-lg bg-primary-500 text-white hover:bg-primary-500/90 transition-all uppercase tracking-widest disabled:opacity-60"
+                     className="px-3 py-2 text-[10px] font-black rounded-lg bg-primary-500 text-white hover:bg-primary-500/90 transition-all uppercase tracking-widest disabled:opacity-60"
                   >
-                     {isBusy ? 'Generating...' : 'Generate Link'}
+                     {isBusy ? 'Generating...' : 'Generate'}
                   </button>
                </div>
             </div>
          ) : null}
 
-         <div className="bg-white border border-slate-50 p-3 rounded-lg shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-               <h3 className="text-xs font-black text-primary-500 tracking-tight">My Consultations</h3>
-               <span className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest">
-                  {consultationsLoading ? 'Loading…' : `${myConsultations.length}`}
-               </span>
-            </div>
-
-            <div className="mb-3 space-y-2">
-               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-[#808e9b]">Find by date</label>
-                  <input
-                     type="date"
-                     value={selectedSessionDate}
-                     onChange={(e) => setSelectedSessionDate(e.target.value)}
-                     className="w-full sm:w-auto px-2 py-1.5 border border-slate-200 rounded-md text-[10px] font-black text-[#1e272e] bg-white"
-                  />
-                  <button
-                     type="button"
-                     onClick={() => setSelectedSessionDate('')}
-                     className="px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-md border border-slate-200 text-[#808e9b] hover:border-primary-500 hover:text-primary-500"
-                  >
-                     Clear
-                  </button>
+         <div className="rounded-4xl border border-slate-200 bg-[#f5f7fb] p-3 shadow-xl shadow-primary-500/5 min-h-155">
+            <div className="flex gap-3 h-full">
+               <div className="hidden lg:flex w-14 rounded-2xl bg-white border border-slate-100 flex-col items-center py-3 justify-between">
+                  <div className="space-y-2">
+                     <button className="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400">
+                        <ChatBubbleLeftRightIcon className="h-4 w-4" />
+                     </button>
+                     <button className="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400">
+                        <UserGroupIcon className="h-4 w-4" />
+                     </button>
+                     <button className="h-9 w-9 rounded-xl bg-primary-500/10 flex items-center justify-center text-primary-500 border border-primary-100">
+                        <VideoCameraIcon className="h-4 w-4" />
+                     </button>
+                  </div>
+                  <div className="h-8 w-8 rounded-full bg-slate-200" />
                </div>
 
-               {availableSessionDates.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                     {availableSessionDates.slice(0, 8).map((day) => (
-                        <button
-                           key={day}
-                           type="button"
-                           onClick={() => setSelectedSessionDate(day)}
-                           className={`px-2 py-1 rounded-md border text-[9px] font-black uppercase tracking-widest transition-all ${
-                              selectedSessionDate === day
-                                 ? 'border-primary-500 bg-primary-500 text-white'
-                                 : 'border-slate-200 text-[#808e9b] hover:border-primary-500 hover:text-primary-500'
-                           }`}
-                        >
-                           {formatDateHeading(day)}
-                        </button>
-                     ))}
-                  </div>
-               ) : null}
-            </div>
-
-            <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
-               {consultationsByDate.map((group) => (
-                  <div key={group.dayKey} className="rounded-lg border border-slate-100 bg-slate-50/70">
-                     <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-primary-500">
-                           {formatDateHeading(group.dayKey)}
-                        </p>
-                        <span className="text-[9px] font-black text-[#808e9b]">{group.list.length} sessions</span>
+               <div className="flex-1 space-y-3">
+                  <div className="rounded-2xl bg-white border border-slate-100 p-3">
+                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 pb-2 border-b border-slate-100">
+                        <p className="text-sm font-black text-primary-500">Schedules</p>
+                        <div className="flex items-center gap-2">
+                           <input
+                              type="date"
+                              value={selectedSessionDate}
+                              onChange={(e) => setSelectedSessionDate(e.target.value)}
+                              className="px-2 py-1.5 border border-slate-200 rounded-md text-[10px] font-black text-[#1e272e] bg-white"
+                           />
+                           <button
+                              type="button"
+                              onClick={() => setSelectedSessionDate('')}
+                              className="px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-md border border-slate-200 text-[#808e9b] hover:border-primary-500 hover:text-primary-500"
+                           >
+                              Clear
+                           </button>
+                        </div>
                      </div>
 
-                     <div className="px-3 py-2 space-y-2">
-                        {group.list.map((c) => (
-                           <div key={c.id} className="flex items-center justify-between rounded-md border border-slate-100 bg-white px-2 py-2">
-                              <div className="min-w-0">
-                                 <div className="text-[10px] font-black text-[#1e272e] uppercase tracking-wider">
-                                    {c.status || 'UNKNOWN'} • {formatShortDateTime(c?.scheduledAt || c?.startedAt || c?.createdAt)}
-                                 </div>
-                                 <div className="text-[9px] font-bold text-[#808e9b] mt-0.5 truncate">
-                                    Patient: {patientLookup.get(String(c?.patientId || '')) || c?.patientId || 'N/A'}
-                                 </div>
-                                 {!isDoctor ? (
-                                    <div className="text-[9px] font-bold text-[#808e9b] truncate">
-                                       Doctor: {doctorLookup.get(String(c?.doctorId || '')) || c?.doctorId || 'N/A'}
-                                    </div>
-                                 ) : null}
-                                 <div className="text-[9px] font-bold text-[#808e9b] truncate">
-                                    Appointment: {c?.appointmentId || 'N/A'} • Room: {c?.roomName || c?.roomId || 'N/A'}
-                                 </div>
-                              </div>
-
-                              {(c.sessionUrl || c.jitsiUrl) ? (
-                                 <button
-                                    type="button"
-                                    onClick={() => {
-                                       const link = c.sessionUrl || c.jitsiUrl || '';
-                                       setJitsiUrl(link);
-                                    }}
-                                    className="ml-2 px-2 py-1 text-[9px] font-black rounded-md border border-slate-200 text-primary-500 hover:border-primary-500 transition-all uppercase tracking-widest"
-                                 >
-                                    Join
-                                 </button>
-                              ) : null}
+                     <div className="mt-2">
+                        {dayFilteredScheduleRows.length === 0 ? (
+                           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-black text-amber-800 uppercase tracking-widest">
+                              No session for selected day.
                            </div>
-                        ))}
+                        ) : (
+                           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                              {dayFilteredScheduleRows.map((c) => {
+                                 const sender = isDoctor
+                                    ? patientLookup.get(String(c?.patientId || '')) || c?.patientId || 'Patient'
+                                    : doctorLookup.get(String(c?.doctorId || '')) || c?.doctorId || 'Doctor';
+                                 const selected = c.rowKey === selectedSchedule?.rowKey;
+                                 return (
+                                    <div
+                                       key={c.rowKey}
+                                       className={`rounded-xl px-3 py-2 border cursor-pointer transition-all ${selected ? 'bg-primary-50 border-primary-200' : 'bg-slate-50 border-slate-200 hover:border-primary-200'}`}
+                                       onClick={() => {
+                                          setSelectedScheduleKey(c.rowKey);
+                                       }}
+                                    >
+                                       <p className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest">{sender}</p>
+                                       <p className="text-xs font-bold text-[#1e272e] mt-1">Appointment {c?.appointmentId || 'N/A'}</p>
+                                       <p className="text-[10px] font-semibold text-[#808e9b] mt-1">{formatAppointmentTime(c?.scheduledAt || c?.startedAt || c?.createdAt)}</p>
+                                       <button
+                                          type="button"
+                                          onClick={(event) => {
+                                             event.stopPropagation();
+                                             setSelectedScheduleKey(c.rowKey);
+                                             const link = c.sessionUrl || c.jitsiUrl || '';
+                                             if (link) {
+                                                setJitsiUrl(link);
+                                             }
+                                          }}
+                                          className="mt-2 px-2 py-1 text-[9px] font-black rounded-md border border-slate-200 text-primary-500 hover:border-primary-500 uppercase tracking-widest"
+                                       >
+                                          Join session
+                                       </button>
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        )}
                      </div>
                   </div>
-               ))}
 
-               {!consultationsLoading && consultationsByDate.length === 0 ? (
-                  <div className="text-[10px] font-bold text-[#808e9b]">No consultations</div>
-               ) : null}
+                  <div className="rounded-2xl bg-white border border-slate-100 p-3 flex flex-col">
+                     <div className="flex items-center justify-between pb-2">
+                        <p className="text-sm font-black text-primary-500">Consultation Video</p>
+                        <div className="text-right">
+                           <span className="block text-[9px] font-black uppercase tracking-widest text-[#808e9b]">
+                              {jitsiUrl ? 'Connected' : 'Waiting'}
+                           </span>
+                           <span className="block text-[10px] font-black text-primary-500 mt-0.5">
+                              {selectedScheduleDateLabel}
+                           </span>
+                        </div>
+                     </div>
+
+                     <div className="relative w-full aspect-video max-h-[72vh] rounded-2xl overflow-hidden bg-slate-900">
+                        {jitsiUrl ? (
+                           <iframe
+                              title="Telemedicine session"
+                              src={embedUrl}
+                              className="absolute inset-0 w-full h-full"
+                              style={{ border: 0 }}
+                              allow="camera https://meet.jit.si; microphone https://meet.jit.si; display-capture https://meet.jit.si; autoplay; fullscreen"
+                              allowFullScreen
+                              referrerPolicy="no-referrer"
+                              onLoad={() => {
+                                 setFrameLoaded(true);
+                                 setEmbedStuck(false);
+                              }}
+                           />
+                        ) : (
+                           <div className="absolute inset-0 grid place-items-center text-center p-8">
+                              <div>
+                                 <VideoCameraIcon className="h-10 w-10 text-white/70 mx-auto" />
+                                 <p className="mt-3 text-sm font-black text-white">No active session</p>
+                                 <p className="text-xs text-white/70 mt-1">Pick a day, select schedule above, then click Join session.</p>
+                              </div>
+                           </div>
+                        )}
+
+                        <div className="absolute top-3 left-3 p-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/15 z-10 flex items-center space-x-2">
+                           <ShieldCheckIcon className="h-4 w-4 text-accent-red" />
+                           <span className="text-[10px] font-black text-white uppercase tracking-widest">Secure</span>
+                        </div>
+
+                        <div className="absolute top-3 right-3 z-10 space-y-2">
+                           {consultationPatients.slice(0, 4).map((p, idx) => {
+                              const label = p?.name || p?.username || `P${idx + 1}`;
+                              return (
+                                 <div key={String(p?.id || p?.userId || idx)} className="h-12 w-12 rounded-xl border-2 border-white/80 bg-slate-200 text-[10px] font-black text-primary-500 flex items-center justify-center overflow-hidden">
+                                    {String(label).slice(0, 2).toUpperCase()}
+                                 </div>
+                              );
+                           })}
+                        </div>
+
+                        {embedStuck ? (
+                           <div className="absolute bottom-3 right-3 z-10 bg-black/45 border border-white/20 rounded-md px-3 py-2 text-white text-[10px] font-black uppercase tracking-widest">
+                              Loading stuck. Reload and rejoin.
+                           </div>
+                        ) : null}
+                     </div>
+
+                     <div className="mt-3 flex items-center justify-center gap-2">
+                        <button
+                           type="button"
+                           onClick={() => setMicMuted((prev) => !prev)}
+                           className={`h-10 w-10 rounded-full border flex items-center justify-center transition-all ${micMuted ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-slate-100 border-slate-200 text-slate-600'}`}
+                           title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                        >
+                           <MicrophoneIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                           type="button"
+                           onClick={() => setSpeakerMuted((prev) => !prev)}
+                           className={`h-10 w-10 rounded-full border flex items-center justify-center transition-all ${speakerMuted ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-slate-100 border-slate-200 text-slate-600'}`}
+                           title={speakerMuted ? 'Unmute speaker' : 'Mute speaker'}
+                        >
+                           <SpeakerWaveIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                           type="button"
+                           onClick={handleEndSession}
+                           className="h-10 w-10 rounded-full bg-rose-500 flex items-center justify-center text-white shadow-lg shadow-rose-500/30"
+                           title="End session"
+                        >
+                           <PhoneXMarkIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                           type="button"
+                           onClick={() => setVideoMuted((prev) => !prev)}
+                           className={`h-10 w-10 rounded-full border flex items-center justify-center transition-all ${videoMuted ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-primary-500/10 border-primary-100 text-primary-500'}`}
+                           title={videoMuted ? 'Turn camera on' : 'Turn camera off'}
+                        >
+                           <VideoCameraIcon className="h-5 w-5" />
+                        </button>
+                     </div>
+                     <div className="mt-2 flex items-center justify-center gap-2">
+                        <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${micMuted ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                           Mic {micMuted ? 'Off' : 'On'}
+                        </span>
+                        <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${speakerMuted ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                           Speaker {speakerMuted ? 'Off' : 'On'}
+                        </span>
+                        <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${videoMuted ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                           Camera {videoMuted ? 'Off' : 'On'}
+                        </span>
+                     </div>
+                  </div>
+               </div>
             </div>
          </div>
-
-         {jitsiUrl ? (
-            <div className="flex-1 bg-slate-900 rounded-4xl shadow-xl relative overflow-hidden ring-4 ring-white group min-h-[420px]">
-               <iframe
-                  title="Telemedicine session"
-                  src={embedUrl}
-                  className="absolute inset-0 w-full h-full"
-                  style={{ border: 0 }}
-                  allow="camera https://meet.jit.si; microphone https://meet.jit.si; display-capture https://meet.jit.si; autoplay; fullscreen"
-                  allowFullScreen
-                  referrerPolicy="no-referrer"
-                  onLoad={() => {
-                     setFrameLoaded(true);
-                     setEmbedStuck(false);
-                  }}
-               />
-               <div className="absolute top-6 left-6 p-4 bg-white/10 backdrop-blur-md rounded-xl border border-white/10 z-10 flex items-center space-x-2">
-                  <ShieldCheckIcon className="h-4 w-4 text-accent-red" />
-                  <span className="text-[10px] font-black text-white uppercase tracking-widest">Secure</span>
-               </div>
-               {embedStuck ? (
-                  <div className="absolute bottom-6 right-6 z-10 bg-black/45 border border-white/20 rounded-md px-3 py-2 text-white text-[10px] font-black uppercase tracking-widest">
-                     Loading stuck. Reload the page and rejoin this meeting.
-                  </div>
-               ) : null}
-            </div>
-         ) : null}
       </div>
    );
 }

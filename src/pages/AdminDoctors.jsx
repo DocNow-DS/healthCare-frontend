@@ -21,6 +21,23 @@ export default function AdminDoctors() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editDoctor, setEditDoctor] = useState(null);
+  const [newDoctor, setNewDoctor] = useState({
+    username: '',
+    password: '',
+    email: '',
+    name: '',
+    phone: '',
+    specialty: '',
+    licenseNumber: '',
+    yearsOfExperience: '',
+    department: '',
+    qualifications: ''
+  });
 
   useEffect(() => {
     fetchDoctors();
@@ -75,7 +92,8 @@ export default function AdminDoctors() {
 
   const handleToggleStatus = async (doctorId) => {
     try {
-      await API.doctors.toggleStatus(doctorId);
+      const doctor = doctors.find((d) => d.id === doctorId);
+      await API.doctors.toggleStatus(doctorId, doctor);
       fetchDoctors(); // Refresh the list
     } catch (error) {
       console.error('Error toggling doctor status:', error);
@@ -90,6 +108,106 @@ export default function AdminDoctors() {
     } catch (error) {
       console.error('Error verifying doctor:', error);
       alert('Failed to verify doctor. Please try again.');
+    }
+  };
+
+  const openEditModal = (doctor) => {
+    setSelectedDoctor(doctor);
+    setEditDoctor({
+      name: doctor.name || '',
+      email: doctor.email || '',
+      phone: doctor.phone || '',
+      specialty: doctor.specialty || '',
+      licenseNumber: doctor.licenseNumber || '',
+      yearsOfExperience: doctor.experience ? String(doctor.experience).replace(/\D/g, '') : '',
+      department: doctor.department || '',
+      qualifications: doctor.qualifications || '',
+    });
+    setEditError('');
+    setShowEditModal(true);
+  };
+
+  const handleEditDoctor = async (e) => {
+    e.preventDefault();
+    if (!selectedDoctor) return;
+    setEditError('');
+
+    try {
+      setIsEditSubmitting(true);
+      await API.doctors.update(selectedDoctor.id, {
+        name: editDoctor.name?.trim() || null,
+        email: editDoctor.email?.trim() || null,
+        phone: editDoctor.phone?.trim() || null,
+        specialty: editDoctor.specialty?.trim() || null,
+        licenseNumber: editDoctor.licenseNumber?.trim() || null,
+        yearsOfExperience: editDoctor.yearsOfExperience
+          ? Number(editDoctor.yearsOfExperience)
+          : null,
+        department: editDoctor.department?.trim() || null,
+        qualifications: editDoctor.qualifications?.trim() || null,
+      });
+
+      setShowEditModal(false);
+      setSelectedDoctor(null);
+      setEditDoctor(null);
+      await fetchDoctors();
+    } catch (err) {
+      setEditError(err?.message || 'Failed to update doctor.');
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
+
+  const resetAddDoctorForm = () => {
+    setNewDoctor({
+      username: '',
+      password: '',
+      email: '',
+      name: '',
+      phone: '',
+      specialty: '',
+      licenseNumber: '',
+      yearsOfExperience: '',
+      department: '',
+      qualifications: ''
+    });
+    setSubmitError('');
+  };
+
+  const handleAddDoctor = async (e) => {
+    e.preventDefault();
+    setSubmitError('');
+
+    if (!newDoctor.username || !newDoctor.password || !newDoctor.email || !newDoctor.name) {
+      setSubmitError('Username, password, email and name are required.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await API.auth.register({
+        username: newDoctor.username.trim(),
+        password: newDoctor.password,
+        email: newDoctor.email.trim(),
+        name: newDoctor.name.trim(),
+        phone: newDoctor.phone.trim() || null,
+        roles: 'DOCTOR',
+        specialty: newDoctor.specialty.trim() || null,
+        licenseNumber: newDoctor.licenseNumber.trim() || null,
+        yearsOfExperience: newDoctor.yearsOfExperience
+          ? Number(newDoctor.yearsOfExperience)
+          : null,
+        department: newDoctor.department.trim() || null,
+        qualifications: newDoctor.qualifications.trim() || null,
+      });
+
+      setShowAddModal(false);
+      resetAddDoctorForm();
+      await fetchDoctors();
+    } catch (err) {
+      setSubmitError(err?.message || 'Failed to add doctor.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -174,7 +292,10 @@ export default function AdminDoctors() {
           <p className="mt-2 text-[#808e9b]">Manage and monitor all doctors on the platform</p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => {
+            resetAddDoctorForm();
+            setShowAddModal(true);
+          }}
           className="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 bg-[#182C61] text-white text-sm font-black rounded-xl hover:bg-[#2a3d7a] transition-colors"
         >
           <UserPlusIcon className="h-5 w-5 mr-2" />
@@ -316,10 +437,7 @@ export default function AdminDoctors() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
                       <button
-                        onClick={() => {
-                          setSelectedDoctor(doctor);
-                          setShowEditModal(true);
-                        }}
+                        onClick={() => openEditModal(doctor)}
                         className="text-blue-600 hover:text-blue-900"
                         title="Edit Doctor"
                       >
@@ -355,6 +473,234 @@ export default function AdminDoctors() {
           </table>
         </div>
       </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h3 className="text-xl font-black text-[#182C61]">Add New Doctor</h3>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setSubmitError('');
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <XCircleIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddDoctor} className="space-y-4 px-6 py-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <input
+                  type="text"
+                  placeholder="Username *"
+                  value={newDoctor.username}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, username: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="password"
+                  placeholder="Password *"
+                  value={newDoctor.password}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, password: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="email"
+                  placeholder="Email *"
+                  value={newDoctor.email}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, email: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="Full Name *"
+                  value={newDoctor.name}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, name: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="Phone"
+                  value={newDoctor.phone}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, phone: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="Specialty"
+                  value={newDoctor.specialty}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, specialty: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="License Number"
+                  value={newDoctor.licenseNumber}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, licenseNumber: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Years of Experience"
+                  value={newDoctor.yearsOfExperience}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, yearsOfExperience: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="Department"
+                  value={newDoctor.department}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, department: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="Qualifications"
+                  value={newDoctor.qualifications}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, qualifications: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+              </div>
+
+              {submitError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {submitError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setSubmitError('');
+                  }}
+                  className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="rounded-xl bg-[#182C61] px-4 py-2 text-sm font-black text-white disabled:opacity-60"
+                >
+                  {isSubmitting ? 'Adding...' : 'Add Doctor'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && editDoctor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h3 className="text-xl font-black text-[#182C61]">Edit Doctor</h3>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditError('');
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <XCircleIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditDoctor} className="space-y-4 px-6 py-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <input
+                  type="text"
+                  placeholder="Full Name"
+                  value={editDoctor.name}
+                  onChange={(e) => setEditDoctor({ ...editDoctor, name: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={editDoctor.email}
+                  onChange={(e) => setEditDoctor({ ...editDoctor, email: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="Phone"
+                  value={editDoctor.phone}
+                  onChange={(e) => setEditDoctor({ ...editDoctor, phone: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="Specialty"
+                  value={editDoctor.specialty}
+                  onChange={(e) => setEditDoctor({ ...editDoctor, specialty: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="License Number"
+                  value={editDoctor.licenseNumber}
+                  onChange={(e) => setEditDoctor({ ...editDoctor, licenseNumber: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Years of Experience"
+                  value={editDoctor.yearsOfExperience}
+                  onChange={(e) => setEditDoctor({ ...editDoctor, yearsOfExperience: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="Department"
+                  value={editDoctor.department}
+                  onChange={(e) => setEditDoctor({ ...editDoctor, department: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+                <input
+                  type="text"
+                  placeholder="Qualifications"
+                  value={editDoctor.qualifications}
+                  onChange={(e) => setEditDoctor({ ...editDoctor, qualifications: e.target.value })}
+                  className="rounded-xl border border-gray-200 px-3 py-2"
+                />
+              </div>
+
+              {editError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {editError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditError('');
+                  }}
+                  className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isEditSubmitting}
+                  className="rounded-xl bg-[#182C61] px-4 py-2 text-sm font-black text-white disabled:opacity-60"
+                >
+                  {isEditSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
