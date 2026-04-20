@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { API } from '../config/api';
-import { UserCircleIcon, ExclamationTriangleIcon, CheckCircleIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { UserCircleIcon, ExclamationTriangleIcon, CheckCircleIcon, PencilIcon, XMarkIcon, TrashIcon } from '@heroicons/react/24/outline';
 import UploadMedicalDocument from '../components/UploadMedicalDocument';
 import { normalizeDocumentUrl } from '../utils/documentUrl';
 
@@ -123,13 +123,29 @@ export default function PatientProfile() {
     }
   };
 
+  const handleDeleteReport = async (reportId) => {
+    if (!window.confirm('Are you sure you want to delete this report?')) return;
+    setError('');
+    try {
+      await API.patients.deleteReport(reportId);
+      setSuccess('Medical report deleted successfully.');
+      await loadReports();
+    } catch (err) {
+      setError(err?.message || 'Failed to delete report.');
+    }
+  };
+
   const handleReportUpload = async (file, description) => {
     setError('');
     setSuccess('');
-    await API.patients.uploadReport(file, description);
-    setSuccess('Medical report submitted successfully.');
-    setReportTab('view');
-    await loadReports();
+    try {
+      await API.patients.uploadReport(file, description);
+      setSuccess('Medical report submitted successfully.');
+      setReportTab('view');
+      await loadReports();
+    } catch (err) {
+      setError(err?.message || 'Failed to upload report.');
+    }
   };
 
   if (loading) {
@@ -141,316 +157,290 @@ export default function PatientProfile() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl space-y-10 pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-black text-[#182C61]">My Profile</h1>
-          <p className="text-[#808e9b] mt-1 font-bold">Manage your personal information</p>
-        </div>
-        {!isEditing && (
-          <button
-            onClick={() => setIsEditing(true)}
-            className="inline-flex items-center px-4 py-2 bg-[#182C61] text-white text-sm font-black rounded-xl hover:bg-[#2a3d7a] transition-colors"
-          >
-            <PencilIcon className="h-5 w-5 mr-2" />
-            Edit Profile
-          </button>
-        )}
+      <div>
+        <h1 className="text-3xl font-black text-gray-900">Settings</h1>
       </div>
 
       {/* Alerts */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
           <ExclamationTriangleIcon className="h-5 w-5 text-red-600 mt-0.5" />
           <span className="text-sm font-semibold text-red-800">{error}</span>
         </div>
       )}
 
       {success && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-start gap-2">
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
           <CheckCircleIcon className="h-5 w-5 text-green-600 mt-0.5" />
           <span className="text-sm font-semibold text-green-800">{success}</span>
         </div>
       )}
 
-      {/* Profile Card */}
-      <div className="bg-white border-2 border-slate-50 rounded-2xl overflow-hidden">
-        {/* Profile Header */}
-        <div className="bg-[#182C61] p-6">
-          <div className="flex items-center gap-4">
-            <div className="h-20 w-20 bg-white rounded-full flex items-center justify-center">
-              <UserCircleIcon className="h-12 w-12 text-[#182C61]" />
-            </div>
-            <div className="text-white">
-              <h2 className="text-xl font-black">{user?.name || user?.username || 'Patient'}</h2>
-              <p className="text-white/70 text-sm">{user?.email || 'No email'}</p>
-              <span className="inline-flex mt-2 px-3 py-1 bg-white/20 rounded-full text-xs font-bold uppercase tracking-wider">
-                Patient
-              </span>
-            </div>
+      <div className="flex gap-12">
+        {/* Left Sidebar Menu */}
+        <div className="hidden lg:block w-48 shrink-0">
+          <div className="space-y-1">
+            <p className="text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-3">My Account</p>
+            <button className="w-full text-left px-3 py-2 text-sm font-bold text-gray-900 bg-gray-50 rounded-lg">Personal Details</button>
+            <button onClick={() => document.getElementById('medical-reports')?.scrollIntoView({ behavior: 'smooth' })} className="w-full text-left px-3 py-2 text-sm font-semibold text-gray-500 hover:text-gray-900 rounded-lg">Medical Reports</button>
+            <button onClick={() => document.getElementById('medical-reports')?.scrollIntoView({ behavior: 'smooth' })} className="w-full text-left px-3 py-2 text-sm font-semibold text-gray-500 hover:text-gray-900 rounded-lg">Prescriptions</button>
           </div>
         </div>
 
-        {/* Profile Form */}
-        <div className="p-6">
-          {isEditing ? (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Main Content Area */}
+        <div className="flex-1 space-y-10">
+          
+          <form onSubmit={handleSubmit} className="space-y-10">
+            {/* Personal Details Section */}
+            <div className="space-y-6">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="h-16 w-16 bg-indigo-500 rounded-full flex items-center justify-center shrink-0">
+                  <UserCircleIcon className="h-10 w-10 text-white" />
+                </div>
                 <div>
-                  <label className="block text-sm font-bold text-[#182C61] mb-2">Full Name</label>
+                  <h2 className="text-xl font-bold text-gray-900">{user?.name || user?.username || 'Patient Profile'}</h2>
+                  <p className="text-sm text-gray-500">{user?.email}</p>
+                </div>
+              </div>
+
+              <h2 className="text-lg font-bold text-gray-900 mb-6">Personal Details</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                <div>
+                  <label className="block text-xs font-bold text-gray-900 mb-2">Full Name*</label>
                   <input
                     type="text"
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#182C61]"
-                    placeholder="Enter your full name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-[#182C61] mb-2">Email</label>
+                  <label className="block text-xs font-bold text-gray-900 mb-2">Email Address*</label>
                   <input
                     type="email"
                     name="email"
                     value={formData.email}
                     disabled
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm bg-slate-50 text-gray-500 cursor-not-allowed"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-500 bg-gray-50 cursor-not-allowed"
                   />
-                  <p className="text-xs text-[#808e9b] mt-1">Email cannot be changed</p>
                 </div>
+                
                 <div>
-                  <label className="block text-sm font-bold text-[#182C61] mb-2">Phone Number</label>
+                  <label className="block text-xs font-bold text-gray-900 mb-2">Phone Number</label>
                   <input
                     type="tel"
                     name="phone"
                     value={formData.phone}
                     onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#182C61]"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     placeholder="Enter phone number"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-[#182C61] mb-2">Age</label>
+                  <label className="block text-xs font-bold text-gray-900 mb-2">What should we call you?</label>
                   <input
-                    type="number"
-                    name="age"
-                    value={formData.age}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#182C61]"
-                    placeholder="Enter age"
-                    min="0"
-                    max="150"
+                    type="text"
+                    name="username"
+                    value={user?.username || ''}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-500 bg-gray-50 cursor-not-allowed"
+                    placeholder="Username"
                   />
                 </div>
+                
                 <div>
-                  <label className="block text-sm font-bold text-[#182C61] mb-2">Gender</label>
+                  <label className="block text-xs font-bold text-gray-900 mb-2">Gender</label>
                   <select
                     name="gender"
                     value={formData.gender}
                     onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#182C61]"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
                   >
-                    <option value="">Select gender</option>
+                    <option value="">Select</option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                     <option value="Other">Other</option>
                     <option value="Prefer not to say">Prefer not to say</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-900 mb-2">Age / Date of Birth</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      name="age"
+                      value={formData.age}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Age"
+                    />
+                  </div>
+                </div>
+
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-bold text-[#182C61] mb-2">Address</label>
-                  <textarea
+                  <label className="block text-xs font-bold text-gray-900 mb-2">Address</label>
+                  <input
+                    type="text"
                     name="address"
                     value={formData.address}
                     onChange={handleChange}
-                    rows="2"
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#182C61]"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     placeholder="Enter your address"
                   />
                 </div>
+                
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-bold text-[#182C61] mb-2">Medical History</label>
+                  <label className="block text-xs font-bold text-gray-900 mb-2">Medical History</label>
                   <textarea
                     name="medicalHistory"
                     value={formData.medicalHistory}
                     onChange={handleChange}
-                    rows="3"
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#182C61]"
+                    rows="4"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     placeholder="Enter any relevant medical history (allergies, chronic conditions, etc.)"
                   />
                 </div>
               </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="px-6 py-2 bg-[#182C61] text-white rounded-xl font-black text-sm hover:bg-[#2a3d7a] disabled:opacity-50"
-                >
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setIsEditing(false); loadProfile(); }}
-                  className="inline-flex items-center px-6 py-2 bg-slate-100 text-slate-700 rounded-xl font-black text-sm hover:bg-slate-200"
-                >
-                  <XMarkIcon className="h-4 w-4 mr-2" />
-                  Cancel
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Full Name</p>
-                <p className="text-sm font-bold text-[#182C61]">{user?.name || user?.username || 'Not provided'}</p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Email</p>
-                <p className="text-sm font-bold text-[#182C61]">{user?.email || 'Not provided'}</p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Phone Number</p>
-                <p className="text-sm font-bold text-[#182C61]">{user?.phone || 'Not provided'}</p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Age</p>
-                <p className="text-sm font-bold text-[#182C61]">{user?.age || 'Not provided'}</p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Gender</p>
-                <p className="text-sm font-bold text-[#182C61]">{user?.gender || 'Not provided'}</p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Member Since</p>
-                <p className="text-sm font-bold text-[#182C61]">
-                  {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
-                </p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Patient ID</p>
-                <p className="text-sm font-bold text-[#182C61] break-all">{user?.id || user?.userId || 'Not available'}</p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Username</p>
-                <p className="text-sm font-bold text-[#182C61]">{user?.username || 'Not provided'}</p>
-              </div>
-              <div className="md:col-span-2 p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Address</p>
-                <p className="text-sm font-bold text-[#182C61]">{user?.address || 'Not provided'}</p>
-              </div>
-              <div className="md:col-span-2 p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs font-bold text-[#808e9b] uppercase tracking-wider mb-1">Medical History</p>
-                <p className="text-sm font-bold text-[#182C61]">{user?.medicalHistory || 'No medical history recorded'}</p>
-              </div>
             </div>
-          )}
-        </div>
-      </div>
+            
+            <div className="flex justify-end border-t border-gray-200 pt-6">
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-6 py-2 bg-indigo-500 text-white rounded-lg font-semibold text-sm hover:bg-indigo-600 transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Profile Details'}
+              </button>
+            </div>
+          </form>
 
-      <div className="bg-white border-2 border-slate-50 rounded-2xl p-6">
-        <div className="mb-4">
-          <h2 className="text-xl font-black text-[#182C61]">Medical Reports & Prescriptions</h2>
-          <p className="text-[#808e9b] mt-1 text-sm font-bold">View all uploaded reports and available prescriptions in one place.</p>
-        </div>
+          {/* Reports Section Styled Nicely */}
+          <div className="mt-12 bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
+            <div className="mb-6">
+              <h2 className="text-lg font-bold text-gray-900">Medical Reports & Prescriptions</h2>
+              <p className="text-gray-500 mt-1 text-sm">View all uploaded reports and available prescriptions in one place.</p>
+            </div>
 
-        <div className="flex items-center gap-2 mb-4">
-          <button
-            type="button"
-            onClick={() => setReportTab('submit')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-black border ${
-              reportTab === 'submit'
-                ? 'bg-[#182C61] text-white border-[#182C61]'
-                : 'bg-white text-[#182C61] border-[#182C61]/30 hover:bg-[#182C61]/5'
-            }`}
-          >
-            Submit Report
-          </button>
-          <button
-            type="button"
-            onClick={() => setReportTab('view')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-black border ${
-              reportTab === 'view'
-                ? 'bg-[#182C61] text-white border-[#182C61]'
-                : 'bg-white text-[#182C61] border-[#182C61]/30 hover:bg-[#182C61]/5'
-            }`}
-          >
-            View Reports
-          </button>
-        </div>
+            <div className="flex items-center gap-2 mb-6 border-b border-gray-200 pb-4">
+              <button
+                type="button"
+                onClick={() => setReportTab('submit')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  reportTab === 'submit'
+                    ? 'bg-indigo-50 text-indigo-600'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Submit Report
+              </button>
+              <button
+                type="button"
+                onClick={() => setReportTab('view')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  reportTab === 'view'
+                    ? 'bg-indigo-50 text-indigo-600'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                View Reports
+              </button>
+            </div>
 
-        {reportTab === 'submit' ? (
-          <UploadMedicalDocument onUpload={handleReportUpload} />
-        ) : reportsLoading ? (
-          <p className="text-sm font-bold text-[#808e9b]">Loading reports...</p>
-        ) : reports.length === 0 && prescriptions.length === 0 ? (
-          <p className="text-sm font-bold text-[#808e9b]">No uploaded reports or prescriptions yet.</p>
-        ) : (
-          <div className="space-y-5">
-            <div>
-              <h3 className="text-sm font-black text-[#182C61] uppercase tracking-wider mb-3">Uploaded Reports ({reports.length})</h3>
-              {reports.length === 0 ? (
-                <p className="text-sm font-bold text-[#808e9b]">No uploaded reports yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {reports.map((item, index) => (
-                    <div key={item.id || index} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                      <p className="text-sm font-black text-[#182C61]">{item.fileName || 'Medical Report'}</p>
-                      <p className="text-xs font-bold text-[#808e9b] mt-1">{item.description || 'No description provided'}</p>
-                      {item.uploadDate || item.createdAt ? (
-                        <p className="text-xs font-bold text-[#808e9b] mt-1">
-                          Uploaded: {new Date(item.uploadDate || item.createdAt).toLocaleString()}
-                        </p>
-                      ) : null}
-                      {normalizeDocumentUrl(item.filePath || item.fileUrl || item.downloadUrl).startsWith('http') ? (
-                        <a
-                          href={normalizeDocumentUrl(item.filePath || item.fileUrl || item.downloadUrl)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-block mt-2 text-xs font-black text-[#182C61] hover:underline"
-                        >
-                          Open document
-                        </a>
-                      ) : null}
+            {reportTab === 'submit' ? (
+              <UploadMedicalDocument onUpload={handleReportUpload} />
+            ) : reportsLoading ? (
+              <p className="text-sm font-semibold text-gray-500">Loading reports...</p>
+            ) : reports.length === 0 && prescriptions.length === 0 ? (
+              <p className="text-sm font-semibold text-gray-500 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No uploaded reports or prescriptions yet.</p>
+            ) : (
+              <div className="space-y-8">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 mb-4">Uploaded Reports ({reports.length})</h3>
+                  {reports.length === 0 ? (
+                    <p className="text-sm font-semibold text-gray-500">No uploaded reports yet.</p>
+                  ) : (
+                    <div className="grid gap-4">
+                      {reports.map((item, index) => (
+                        <div key={item.id || index} className="p-4 rounded-xl bg-white border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-gray-300 transition-colors shadow-sm">
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">{item.fileName || 'Medical Report'}</p>
+                            <p className="text-xs text-gray-500 mt-1">{item.description || 'No description provided'}</p>
+                            {item.uploadDate || item.createdAt ? (
+                              <p className="text-xs text-gray-400 mt-1">
+                                Uploaded: {new Date(item.uploadDate || item.createdAt).toLocaleString()}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {normalizeDocumentUrl(item.filePath || item.fileUrl || item.downloadUrl)?.startsWith('http') ? (
+                              <a
+                                href={normalizeDocumentUrl(item.filePath || item.fileUrl || item.downloadUrl)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors whitespace-nowrap"
+                              >
+                                View report
+                              </a>
+                            ) : null}
+                            {item.id && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteReport(item.id)}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                                title="Delete Report"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
 
-            <div>
-              <h3 className="text-sm font-black text-[#182C61] uppercase tracking-wider mb-3">Prescriptions ({prescriptions.length})</h3>
-              {prescriptions.length === 0 ? (
-                <p className="text-sm font-bold text-[#808e9b]">No prescriptions available.</p>
-              ) : (
-                <div className="space-y-3">
-                  {prescriptions.map((item, index) => (
-                    <div key={item.id || item.prescriptionId || index} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                      <p className="text-sm font-black text-[#182C61]">{item.title || item.fileName || 'Prescription'}</p>
-                      <p className="text-xs font-bold text-[#808e9b] mt-1">{item.description || item.notes || 'No details provided'}</p>
-                      {item.createdAt || item.uploadDate ? (
-                        <p className="text-xs font-bold text-[#808e9b] mt-1">
-                          Date: {new Date(item.createdAt || item.uploadDate).toLocaleString()}
-                        </p>
-                      ) : null}
-                      {normalizeDocumentUrl(item.fileUrl || item.downloadUrl || item.filePath).startsWith('http') ? (
-                        <a
-                          href={normalizeDocumentUrl(item.fileUrl || item.downloadUrl || item.filePath)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-block mt-2 text-xs font-black text-[#182C61] hover:underline"
-                        >
-                          Open prescription
-                        </a>
-                      ) : null}
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 mb-4">Prescriptions ({prescriptions.length})</h3>
+                  {prescriptions.length === 0 ? (
+                    <p className="text-sm font-semibold text-gray-500">No prescriptions available.</p>
+                  ) : (
+                    <div className="grid gap-4">
+                      {prescriptions.map((item, index) => (
+                        <div key={item.id || item.prescriptionId || index} className="p-4 rounded-xl bg-white border border-gray-200 flex justify-between shadow-sm">
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">{item.title || item.fileName || 'Prescription'}</p>
+                            <p className="text-xs text-gray-500 mt-1">{item.description || item.notes || 'No details provided'}</p>
+                            {item.createdAt || item.uploadDate ? (
+                              <p className="text-xs text-gray-400 mt-1">
+                                Date: {new Date(item.createdAt || item.uploadDate).toLocaleString()}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div>
+                            {normalizeDocumentUrl(item.fileUrl || item.downloadUrl || item.filePath)?.startsWith('http') ? (
+                              <a
+                                href={normalizeDocumentUrl(item.fileUrl || item.downloadUrl || item.filePath)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors whitespace-nowrap"
+                              >
+                                View prescription
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

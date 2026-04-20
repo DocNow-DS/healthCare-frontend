@@ -3,6 +3,12 @@ export function normalizeDocumentUrl(rawUrl) {
 
   let value = rawUrl.trim();
 
+  if (value.startsWith('/api/')) {
+    const patientServiceUrl = import.meta.env?.VITE_PATIENT_SERVICE_URL || 'http://localhost:8081';
+    const base = patientServiceUrl.endsWith('/') ? patientServiceUrl.slice(0, -1) : patientServiceUrl;
+    return base + value;
+  }
+
   // Repair malformed hostnames from previous normalization (storage.storage.supabase.co).
   value = value.replace('.storage.storage.supabase.co', '.storage.supabase.co');
 

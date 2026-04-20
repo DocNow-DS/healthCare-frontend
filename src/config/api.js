@@ -198,6 +198,9 @@ export const API = {
     }),
     getReports: () => apiClient(`${services.patient}/api/patient/reports`),
     getReportsByPatientId: (id) => apiClient(`${services.patient}/api/patient/${encodeURIComponent(String(id))}/reports`),
+    deleteReport: (id) => apiClient(`${services.patient}/api/patient/reports/${encodeURIComponent(String(id))}`, {
+      method: 'DELETE',
+    }),
     uploadReport: (file, description = '') => {
       const formData = new FormData();
       formData.append('file', file);
