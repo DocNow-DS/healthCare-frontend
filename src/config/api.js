@@ -359,6 +359,11 @@ export const API = {
       method: 'POST',
       body: JSON.stringify(userData),
     }),
+    getUserById: (id) => apiClient(`${services.patient}/api/auth/users/${encodeURIComponent(String(id))}`),
+    updateUserById: (id, data) => apiClient(`${services.patient}/api/auth/users/${encodeURIComponent(String(id))}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
   },
 
   // Notification Endpoints
@@ -508,6 +513,16 @@ export const API = {
           body: JSON.stringify({ action: 'DECLINE', message }),
         },
       ),
+    complete: (doctorId, appointmentId) =>
+      apiClient(
+        `${services.appointment}/api/doctor/appointments/${encodeURIComponent(String(appointmentId))}/complete`,
+        {
+          method: 'PATCH',
+          headers: {
+            'X-Doctor-Id': String(doctorId),
+          },
+        },
+      ),
   },
 
   /** Appointment service: doctor directory for booking (optional `specialty` query). */
@@ -534,6 +549,10 @@ export const API = {
         return safe
       }
     },
+    getDoctorAvailability: (doctorId) =>
+      apiClient(`${services.doctor}/api/availability/user/${encodeURIComponent(String(doctorId))}`, {
+        method: 'GET',
+      }),
   },
 
 

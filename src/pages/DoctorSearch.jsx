@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AdjustmentsHorizontalIcon,
-  CalendarIcon,
-  CheckCircleIcon,
-  ClockIcon,
   ExclamationTriangleIcon,
   HeartIcon,
   MagnifyingGlassIcon,
@@ -14,35 +11,189 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { API } from '../config/api';
 
-const fallbackImage =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='240' viewBox='0 0 320 240'%3E%3Crect width='320' height='240' fill='%23eef2ff'/%3E%3Ccircle cx='160' cy='92' r='34' fill='%23bfdbfe'/%3E%3Cpath d='M90 205c8-34 35-56 70-56 35 0 62 22 70 56' fill='%2393c5fd'/%3E%3Crect x='118' y='154' width='84' height='42' rx='10' fill='%2360a5fa'/%3E%3Cpath d='M152 162h16v26h-16z' fill='%23fff'/%3E%3Cpath d='M147 167h26v16h-26z' fill='%23fff'/%3E%3C/svg%3E";
+const fallbackImage = 'https://images.unsplash.com/photo-1559839734-2b71f1536783?auto=format&fit=crop&q=80&w=200';
+const SLOT_MINUTES = 30;
+const SLOT_HOUR_START = 8;
+const SLOT_HOUR_END = 20;
+const BLOCKING_STATUSES = new Set(['PENDING', 'ACCEPTED', 'RESCHEDULE_REQUESTED']);
+const DAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
-const getDoctorImage = (doctor) => doctor?.profileImageUrl || doctor?.image || fallbackImage;
-
-const handleImageFallback = (event) => {
-  // Prevent loops if fallback itself fails for any reason.
-  event.currentTarget.onerror = null;
-  event.currentTarget.src = fallbackImage;
+const toDateSafe = (value) => {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
 };
 
-const specialtyEmoji = {
-  All: '🩺',
-  GP: '🩺',
-  Cardiology: '❤️',
-  Orthopedic: '🦴',
-  Oncology: '🧬',
-  Dentist: '🦷',
-  Neurology: '🧠',
-  Psychiatry: '🧘',
+const withDoctorPrefix = (name) => {
+  const cleaned = String(name || '').trim();
+  if (!cleaned) return 'Doctor';
+  if (/^dr\.?\s+/i.test(cleaned)) return cleaned;
+  return `Dr. ${cleaned}`;
 };
 
-const normalizeDate = (value) => {
-  const d = value ? new Date(value) : null;
-  return d && !Number.isNaN(d.getTime()) ? d : null;
+const parseTimeToMinutes = (raw) => {
+  if (raw == null) return null;
+  if (typeof raw === 'object') {
+    const h = Number(raw?.hour);
+    const m = Number(raw?.minute);
+    if (Number.isFinite(h) && Number.isFinite(m)) return h * 60 + m;
+  }
+  const text = String(raw).trim();
+  if (!text) return null;
+  const [hh, mm] = text.split(':');
+  const h = Number(hh);
+  const m = Number(mm);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
 };
 
-const getDoctorName = (doc) => doc?.name || doc?.fullName || doc?.username || 'Doctor';
-const getSpecialty = (doc) => doc?.specialization || doc?.specialty || 'General';
+const minutesToTimeText = (minutes) => {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
+const consultationTypeMatches = (slotType, requestedType) => {
+  const s = String(slotType || '').trim().toUpperCase();
+  const r = String(requestedType || '').trim().toUpperCase();
+  if (!s || s === 'BOTH') return true;
+  if (!r) return true;
+  if (s === r) return true;
+  if (s === 'IN_PERSON' && r === 'OFFLINE') return true;
+  if (s === 'OFFLINE' && r === 'IN_PERSON') return true;
+  return false;
+};
+
+const normalizeDayName = (rawDay) => {
+  if (rawDay == null) return '';
+  if (typeof rawDay === 'number') {
+    if (rawDay >= 1 && rawDay <= 7) return DAY_NAMES[rawDay % 7];
+    if (rawDay >= 0 && rawDay <= 6) return DAY_NAMES[rawDay];
+  }
+  const txt = String(rawDay).trim().toUpperCase();
+  if (!txt) return '';
+  if (DAY_NAMES.includes(txt)) return txt;
+  const idx = Number(txt);
+  if (Number.isFinite(idx)) {
+    if (idx >= 1 && idx <= 7) return DAY_NAMES[idx % 7];
+    if (idx >= 0 && idx <= 6) return DAY_NAMES[idx];
+  }
+  return txt;
+};
+
+const buildDefaultSlotOptions = (dateText, doctorAppointments, patientAppointments) => {
+  if (!dateText) return [];
+  const now = new Date();
+  const slots = [];
+  for (let hour = SLOT_HOUR_START; hour < SLOT_HOUR_END; hour += 1) {
+    for (let minute = 0; minute < 60; minute += SLOT_MINUTES) {
+      const value = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+      const slotStart = new Date(`${dateText}T${value}:00`);
+      const slotEnd = new Date(slotStart.getTime() + SLOT_MINUTES * 60 * 1000);
+      const isPast = slotStart <= now;
+      const hasDoctorConflict = doctorAppointments.some((appt) => {
+        const status = String(appt?.status || '').toUpperCase();
+        if (!BLOCKING_STATUSES.has(status)) return false;
+        const start = toDateSafe(appt?.startTime);
+        const end = toDateSafe(appt?.endTime || appt?.startTime);
+        if (!start || !end) return false;
+        return start < slotEnd && end > slotStart;
+      });
+      const hasPatientConflict = patientAppointments.some((appt) => {
+        const status = String(appt?.status || '').toUpperCase();
+        if (!BLOCKING_STATUSES.has(status)) return false;
+        const start = toDateSafe(appt?.startTime);
+        const end = toDateSafe(appt?.endTime || appt?.startTime);
+        if (!start || !end) return false;
+        return start < slotEnd && end > slotStart;
+      });
+      let reason = '';
+      if (isPast) reason = 'Past time';
+      else if (hasDoctorConflict) reason = 'Doctor already booked';
+      else if (hasPatientConflict) reason = 'Slot unavailable';
+      slots.push({
+        value,
+        label: `${value} - ${slotEnd.toTimeString().slice(0, 5)}`,
+        disabled: Boolean(reason),
+        reason,
+      });
+    }
+  }
+  return slots;
+};
+
+const buildSlotOptions = (
+  dateText,
+  doctorAvailability,
+  doctorAppointments,
+  patientAppointments,
+  consultationType,
+) => {
+  if (!dateText) return [];
+
+  const now = new Date();
+  const dayDate = new Date(`${dateText}T00:00:00`);
+  const dayName = DAY_NAMES[dayDate.getDay()] || '';
+  const activeWindows = (Array.isArray(doctorAvailability) ? doctorAvailability : []).filter((slot) => {
+    const isActive = slot?.active ?? slot?.isActive ?? slot?.isAvailable;
+    const slotDay = normalizeDayName(slot?.dayOfWeek);
+    return isActive !== false && slotDay === dayName && consultationTypeMatches(slot?.consultationType, consultationType);
+  });
+  if (activeWindows.length === 0) {
+    return buildDefaultSlotOptions(dateText, doctorAppointments, patientAppointments);
+  }
+
+  const slots = [];
+  const seen = new Set();
+
+  activeWindows.forEach((window) => {
+    const startMinutes = parseTimeToMinutes(window?.startTime);
+    const endMinutes = parseTimeToMinutes(window?.endTime);
+    if (startMinutes == null || endMinutes == null || endMinutes <= startMinutes) return;
+
+    for (let minute = startMinutes; minute + SLOT_MINUTES <= endMinutes; minute += SLOT_MINUTES) {
+      const value = minutesToTimeText(minute);
+      if (seen.has(value)) continue;
+      seen.add(value);
+      const slotStart = new Date(`${dateText}T${value}:00`);
+      const slotEnd = new Date(slotStart.getTime() + SLOT_MINUTES * 60 * 1000);
+
+      const isPast = slotStart <= now;
+
+      const hasDoctorConflict = doctorAppointments.some((appt) => {
+        const status = String(appt?.status || '').toUpperCase();
+        if (!BLOCKING_STATUSES.has(status)) return false;
+        const start = toDateSafe(appt?.startTime);
+        const end = toDateSafe(appt?.endTime || appt?.startTime);
+        if (!start || !end) return false;
+        return start < slotEnd && end > slotStart;
+      });
+
+      const hasPatientConflict = patientAppointments.some((appt) => {
+        const status = String(appt?.status || '').toUpperCase();
+        if (!BLOCKING_STATUSES.has(status)) return false;
+        const start = toDateSafe(appt?.startTime);
+        const end = toDateSafe(appt?.endTime || appt?.startTime);
+        if (!start || !end) return false;
+        return start < slotEnd && end > slotStart;
+      });
+
+      let reason = '';
+      if (isPast) reason = 'Past time';
+      else if (hasDoctorConflict) reason = 'Doctor already booked';
+      else if (hasPatientConflict) reason = 'You already have an appointment';
+
+      slots.push({
+        value,
+        label: `${value} - ${slotEnd.toTimeString().slice(0, 5)}`,
+        disabled: Boolean(reason),
+        reason,
+      });
+    }
+  });
+
+  return slots.sort((a, b) => a.value.localeCompare(b.value));
+};
 
 export default function DoctorSearch() {
   const navigate = useNavigate();
@@ -54,13 +205,19 @@ export default function DoctorSearch() {
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [bookingDoctor, setBookingDoctor] = useState(null);
   const [booking, setBooking] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [doctorAvailability, setDoctorAvailability] = useState([]);
+  const [availabilityFallback, setAvailabilityFallback] = useState(false);
+  const [doctorBookedAppointments, setDoctorBookedAppointments] = useState([]);
+  const [patientBookedAppointments, setPatientBookedAppointments] = useState([]);
   const [bookMessage, setBookMessage] = useState(null);
   const [favoriteIds, setFavoriteIds] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [selectedDoctorDetails, setSelectedDoctorDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [bookForm, setBookForm] = useState({
-    startTime: '',
+    date: '',
+    time: '',
     consultationType: 'ONLINE',
     notes: '',
   });
@@ -114,10 +271,12 @@ export default function DoctorSearch() {
   const filteredDoctors = useMemo(
     () =>
       doctors.filter((doc) => {
-        const name = getDoctorName(doc).toLowerCase();
-        const spec = getSpecialty(doc).toLowerCase();
-        const q = searchTerm.toLowerCase();
-        return name.includes(q) || spec.includes(q);
+        const q = searchTerm.toLowerCase().trim();
+        if (!q) return true;
+        const name = String(doc.name || doc.fullName || doc.username || '').toLowerCase();
+        const specialty = String(doc.specialization || doc.specialty || '').toLowerCase();
+        const hospital = String(doc.hospitalName || doc.hospital || '').toLowerCase();
+        return name.includes(q) || specialty.includes(q) || hospital.includes(q);
       }),
     [doctors, searchTerm],
   );
@@ -173,17 +332,89 @@ export default function DoctorSearch() {
 
   const openBooking = (doctor) => {
     setBookMessage(null);
-    setBookForm({ startTime: '', consultationType: 'ONLINE', notes: '' });
+    setBookForm({ date: '', time: '', consultationType: 'ONLINE', notes: '' });
     setBookingDoctor(doctor);
+    setDoctorAvailability([]);
+    setAvailabilityFallback(false);
+    setDoctorBookedAppointments([]);
+    setPatientBookedAppointments([]);
+
+    const availabilityIdCandidates = [doctor?.id, doctor?.userId, doctor?.doctorId, doctor?.username]
+      .map((v) => (v == null ? '' : String(v).trim()))
+      .filter(Boolean)
+      .filter((v, idx, arr) => arr.indexOf(v) === idx);
+    const doctorId = availabilityIdCandidates[0];
+    if (!doctorId) return;
+
+    setLoadingSlots(true);
+    Promise.allSettled([
+      API.patientAppointments.list(),
+      API.doctorAppointments.list(String(doctorId)),
+      Promise.allSettled(
+        availabilityIdCandidates.map((candidateId) =>
+          API.patientBooking.getDoctorAvailability(String(candidateId)),
+        ),
+      ),
+    ])
+      .then(([patientResult, doctorResult, availabilityResults]) => {
+        const patientList = patientResult.status === 'fulfilled' && Array.isArray(patientResult.value)
+          ? patientResult.value
+          : [];
+        const doctorList = doctorResult.status === 'fulfilled' && Array.isArray(doctorResult.value)
+          ? doctorResult.value
+          : [];
+        const availabilityList = availabilityResults.status === 'fulfilled'
+          ? availabilityResults.value
+            .filter((res) => res.status === 'fulfilled' && Array.isArray(res.value))
+            .flatMap((res) => res.value)
+          : [];
+        setAvailabilityFallback(availabilityList.length === 0);
+        setDoctorAvailability(availabilityList);
+        setPatientBookedAppointments(patientList);
+        setDoctorBookedAppointments(doctorList);
+      })
+      .finally(() => setLoadingSlots(false));
   };
+
+  const slotOptions = useMemo(
+    () =>
+      buildSlotOptions(
+        bookForm.date,
+        doctorAvailability,
+        doctorBookedAppointments,
+        patientBookedAppointments,
+        bookForm.consultationType,
+      ),
+    [
+      bookForm.date,
+      bookForm.consultationType,
+      doctorAvailability,
+      doctorBookedAppointments,
+      patientBookedAppointments,
+    ],
+  );
+  const availableSlotCount = useMemo(
+    () => slotOptions.filter((slot) => !slot.disabled).length,
+    [slotOptions],
+  );
 
   const submitBooking = async (e) => {
     e.preventDefault();
-    if (!bookingDoctor || !bookForm.startTime) return;
+    if (!bookingDoctor || !bookForm.date || !bookForm.time) return;
+
+    const selectedSlot = slotOptions.find((slot) => slot.value === bookForm.time);
+    if (!selectedSlot || selectedSlot.disabled) {
+      setBookMessage({
+        type: 'err',
+        text: 'Selected slot is unavailable. Please choose another time.',
+      });
+      return;
+    }
+
     setBooking(true);
     setBookMessage(null);
     try {
-      const startTime = bookForm.startTime.length === 16 ? `${bookForm.startTime}:00` : bookForm.startTime;
+      const startTime = `${bookForm.date}T${bookForm.time}:00`;
       await API.patientAppointments.create({
         doctorId: String(bookingDoctor.id),
         startTime,
@@ -191,14 +422,18 @@ export default function DoctorSearch() {
         consultationType: bookForm.consultationType,
         notes: bookForm.notes || undefined,
       });
-      setBookMessage({ type: 'ok', text: 'Appointment requested. Redirecting to your appointments...' });
+      setBookMessage({ type: 'ok', text: 'Appointment booked successfully. Redirecting to My Appointments...' });
       setTimeout(() => {
         navigate('/dashboard/appointments');
-      }, 800);
+      }, 1400);
     } catch (err) {
+      const rawMessage = String(err?.message || '');
+      const friendlyMessage = /already have another booking|already have an appointment|time range/i.test(rawMessage)
+        ? 'This time slot is unavailable. Please choose a different slot.'
+        : rawMessage;
       setBookMessage({
         type: 'err',
-        text: err?.message || 'Could not create appointment. Please confirm you are logged in as patient.',
+        text: friendlyMessage || 'Could not create appointment. Are you logged in as a patient?',
       });
     } finally {
       setBooking(false);
@@ -211,27 +446,16 @@ export default function DoctorSearch() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-3xl border border-slate-200 bg-white p-4 md:p-6 shadow-lg shadow-primary-500/5">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-primary-500">Welcome back, patient</h1>
-            <p className="text-sm font-semibold text-[#808e9b] mt-1">
-              Find specialists, review upcoming schedules, and book appointments quickly.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-black text-primary-500 uppercase tracking-widest w-fit">
-            <CalendarIcon className="h-4 w-4" />
-            {new Date().toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-col md:flex-row gap-3">
-          <div className="relative flex-1">
-            <MagnifyingGlassIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#808e9b]" />
+    <div className="space-y-8">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-6">
+        <div className="flex-1">
+          <h1 className="text-4xl font-black text-[#182C61] tracking-tight mb-4">Find specialists</h1>
+          <div className="relative group">
+            <MagnifyingGlassIcon className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[#808e9b] group-focus-within:text-[#182C61] transition-colors" />
             <input
               type="text"
-              placeholder="Search doctors, specialization..."
+              placeholder="Search by doctor name, specialty, or hospital"
+              className="w-full pl-14 pr-6 py-3.5 bg-white border border-slate-300 rounded-full focus:outline-none focus:ring-4 focus:ring-[#182C61]/10 focus:border-[#182C61] text-[#1e272e] font-semibold text-base transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-sm font-semibold text-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
@@ -240,7 +464,8 @@ export default function DoctorSearch() {
           <button
             type="button"
             onClick={() => loadDoctors(selectedSpecialty)}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-widest text-primary-500 hover:bg-slate-50"
+            className="p-3 bg-slate-100 border border-slate-200 rounded-xl text-[#182C61] hover:border-[#182C61]/40 transition-all relative"
+            title="Refresh doctors"
           >
             <AdjustmentsHorizontalIcon className="h-5 w-5" />
             Refresh
@@ -277,20 +502,22 @@ export default function DoctorSearch() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <div className="xl:col-span-2 rounded-3xl border border-slate-200 bg-white p-4 shadow-lg shadow-primary-500/5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-black text-primary-500">
-              Recommended Doctors ({filteredDoctors.length})
-            </h2>
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard/appointments')}
-              className="text-xs font-black uppercase tracking-widest text-primary-500 hover:text-accent-red"
-            >
-              My Appointments
-            </button>
-          </div>
+      <div className="flex items-center space-x-3 overflow-x-auto pb-2 scrollbar-hide">
+        {specialtyOptions.map((spec) => (
+          <button
+            key={spec}
+            type="button"
+            onClick={() => setSelectedSpecialty(spec)}
+            className={`px-6 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-wide transition-all whitespace-nowrap ${
+              selectedSpecialty === spec
+                ? 'bg-[#182C61] text-white shadow-lg shadow-[#182C61]/20'
+                : 'bg-[#d8e8fb] text-[#182C61] border border-[#c5daf5] hover:bg-[#cfe2fa]'
+            }`}
+          >
+            {spec}
+          </button>
+        ))}
+      </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {loading ? (
@@ -380,68 +607,43 @@ export default function DoctorSearch() {
               )}
             </div>
           </div>
+        ) : (
+          filteredDoctors.map((doctor) => (
+          <div key={doctor.id} className="bg-white border border-slate-300/70 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="flex items-start justify-between mb-4">
+              <div />
+              <span className="text-sm font-semibold text-slate-500 flex items-center gap-2">
+                <span className={`h-2.5 w-2.5 rounded-full ${doctor.enabled !== false ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                {doctor.enabled !== false ? 'online' : 'offline'}
+              </span>
+            </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-lg shadow-primary-500/5">
-            {!effectiveSelectedDoctor ? (
-              <p className="text-sm font-semibold text-[#808e9b]">Select a doctor card to view details.</p>
-            ) : (
-              <>
-                <div className="flex items-start gap-3">
-                  <img
-                    src={getDoctorImage(effectiveSelectedDoctor)}
-                    alt={getDoctorName(effectiveSelectedDoctor)}
-                    className="h-16 w-16 rounded-xl object-cover"
-                    onError={handleImageFallback}
-                  />
-                  <div className="flex-1">
-                    <p className="text-lg font-black text-primary-500 leading-tight">{getDoctorName(effectiveSelectedDoctor)}</p>
-                    <p className="text-xs font-bold text-[#808e9b] mt-1">{getSpecialty(effectiveSelectedDoctor)}</p>
-                    <p className="mt-1 text-xl font-black text-primary-500">
-                      ${effectiveSelectedDoctor.consultationFee || effectiveSelectedDoctor.fee || 36}/h
-                    </p>
-                  </div>
-                </div>
+            <div>
+              <h3 className="text-xl md:text-2xl leading-tight font-black text-[#111827]">
+                {withDoctorPrefix(doctor.name || doctor.fullName || doctor.username || 'Doctor')}
+              </h3>
+              <p className="text-xs text-slate-600 mt-1 leading-5">
+                {doctor.specialization || doctor.specialty || 'General specialist'}
+                {(doctor.hospitalName || doctor.hospital) ? `, ${doctor.hospitalName || doctor.hospital}` : ''}
+              </p>
+            </div>
 
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  <div className="rounded-xl border border-slate-200 p-2 text-center bg-slate-50">
-                    <p className="text-xs font-black text-primary-500">{effectiveSelectedDoctor.yearsOfExperience || 0}y</p>
-                    <p className="text-[10px] font-bold text-[#808e9b]">Experience</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 p-2 text-center bg-slate-50">
-                    <p className="text-xs font-black text-primary-500">{effectiveSelectedDoctor.department || 'N/A'}</p>
-                    <p className="text-[10px] font-bold text-[#808e9b]">Department</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 p-2 text-center bg-slate-50">
-                    <p className="text-xs font-black text-primary-500">{effectiveSelectedDoctor.isVerified ? 'Yes' : 'No'}</p>
-                    <p className="text-[10px] font-bold text-[#808e9b]">Verified</p>
-                  </div>
-                </div>
-
-                <div className="mt-3 rounded-xl border border-slate-200 p-3 bg-slate-50/50">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-[#808e9b]">Hospital</p>
-                  <p className="text-xs font-bold text-primary-500 mt-1">{effectiveSelectedDoctor.hospitalName || 'Not specified'}</p>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-[#808e9b] mt-3">Qualifications</p>
-                  <p className="text-xs font-bold text-primary-500 mt-1">{effectiveSelectedDoctor.qualifications || effectiveSelectedDoctor.education || 'Not specified'}</p>
-                </div>
-
-                {detailsLoading ? (
-                  <p className="mt-3 text-xs font-semibold text-[#808e9b]">Loading doctor profile details...</p>
-                ) : null}
-
-                <p className="mt-4 text-xs font-semibold text-[#808e9b] leading-relaxed">
-                  {effectiveSelectedDoctor.about || 'Specialist profile available. Book a consultation to confirm schedule and visit notes.'}
+            <div className="mt-5 pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs text-slate-700">Consultation Fee:</p>
+                <p className="text-xl leading-none font-black text-emerald-600 mt-1">
+                  LKR {doctor.consultationFee || doctor.fee || 'N/A'}
                 </p>
-
-                <button
-                  type="button"
-                  onClick={() => openBooking(effectiveSelectedDoctor)}
-                  className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-500 text-white px-4 py-3 text-xs font-black uppercase tracking-widest hover:bg-primary-600"
-                >
-                  <VideoCameraIcon className="h-4 w-4" />
-                  Booking Appointment
-                </button>
-              </>
-            )}
+                <p className="text-xs font-black text-slate-800 mt-4">VIEW PROFILE</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => openBooking(doctor)}
+                className="bg-[#1e3a8a] hover:bg-[#1d357d] text-white font-black uppercase tracking-wide text-[11px] px-6 py-3 rounded-xl shadow-lg shadow-[#1e3a8a]/25"
+              >
+                Book
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -457,22 +659,63 @@ export default function DoctorSearch() {
             >
               <XMarkIcon className="h-6 w-6" />
             </button>
-            <h2 className="text-2xl font-black text-primary-500 mb-1">Book appointment</h2>
+            <div className="mb-6 rounded-2xl bg-gradient-to-r from-[#182C61]/8 to-[#eb2f06]/8 border border-[#182C61]/10 p-4">
+              <h2 className="text-2xl font-black text-[#182C61] mb-1">Book appointment</h2>
+              <p className="text-sm text-[#808e9b] font-bold">
+                Secure your slot with real-time availability checks.
+              </p>
+            </div>
             <p className="text-sm text-[#808e9b] font-bold mb-6">
-              {getDoctorName(bookingDoctor)} - {getSpecialty(bookingDoctor)}
+              {withDoctorPrefix(bookingDoctor.name || bookingDoctor.fullName || bookingDoctor.username)} —{' '}
+              {bookingDoctor.specialization || bookingDoctor.specialty || 'Doctor'}
             </p>
             <form onSubmit={submitBooking} className="space-y-4">
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-2">
-                  Start time
+                  Appointment date
                 </label>
                 <input
-                  type="datetime-local"
+                  type="date"
                   required
-                  value={bookForm.startTime}
-                  onChange={(e) => setBookForm((f) => ({ ...f, startTime: e.target.value }))}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-primary-500"
+                  min={new Date().toISOString().slice(0, 10)}
+                  value={bookForm.date}
+                  onChange={(e) =>
+                    setBookForm((f) => ({ ...f, date: e.target.value, time: '' }))
+                  }
+                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-[#182C61] bg-white"
                 />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-2">
+                  Time slot
+                </label>
+                <select
+                  required
+                  value={bookForm.time}
+                  disabled={!bookForm.date || loadingSlots}
+                  onChange={(e) => setBookForm((f) => ({ ...f, time: e.target.value }))}
+                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-[#182C61] bg-white disabled:bg-slate-50 disabled:text-slate-400"
+                >
+                  <option value="">
+                    {!bookForm.date
+                      ? 'Select a date first'
+                      : loadingSlots
+                        ? 'Loading availability...'
+                        : availableSlotCount > 0
+                          ? 'Select available slot'
+                          : 'No available slots'}
+                  </option>
+                  {slotOptions.map((slot) => (
+                    <option key={slot.value} value={slot.value} disabled={slot.disabled}>
+                      {slot.disabled ? `${slot.label} (${slot.reason})` : slot.label}
+                    </option>
+                  ))}
+                </select>
+                {bookForm.date && !loadingSlots ? (
+                  <p className="mt-2 text-[11px] font-semibold text-[#808e9b]">
+                    {availableSlotCount} available slots for this date.
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-2">
@@ -480,13 +723,20 @@ export default function DoctorSearch() {
                 </label>
                 <select
                   value={bookForm.consultationType}
-                  onChange={(e) => setBookForm((f) => ({ ...f, consultationType: e.target.value }))}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-primary-500"
+                  onChange={(e) =>
+                    setBookForm((f) => ({ ...f, consultationType: e.target.value, time: '' }))
+                  }
+                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-[#182C61]"
                 >
                   <option value="ONLINE">Online</option>
                   <option value="IN_PERSON">In person</option>
                 </select>
               </div>
+              {bookForm.date && !loadingSlots && slotOptions.length === 0 ? (
+                <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  No active availability for this doctor on the selected date.
+                </p>
+              ) : null}
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-2">
                   Notes (optional)
@@ -507,7 +757,7 @@ export default function DoctorSearch() {
               )}
               <button
                 type="submit"
-                disabled={booking}
+                disabled={booking || !bookForm.date || !bookForm.time || loadingSlots}
                 className="btn-primary w-full py-4 text-xs uppercase tracking-widest font-black disabled:opacity-50"
               >
                 {booking ? 'Sending...' : 'Request appointment'}

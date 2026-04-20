@@ -21,22 +21,24 @@ export default function AdminDoctors() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
-  const [editError, setEditError] = useState('');
-  const [editDoctor, setEditDoctor] = useState(null);
-  const [newDoctor, setNewDoctor] = useState({
+  const [saving, setSaving] = useState(false);
+  const [addForm, setAddForm] = useState({
     username: '',
-    password: '',
     email: '',
-    name: '',
-    phone: '',
+    password: '',
     specialty: '',
     licenseNumber: '',
     yearsOfExperience: '',
+    qualifications: '',
     department: '',
-    qualifications: ''
+  });
+  const [editForm, setEditForm] = useState({
+    email: '',
+    specialty: '',
+    licenseNumber: '',
+    yearsOfExperience: '',
+    qualifications: '',
+    department: '',
   });
 
   useEffect(() => {
@@ -51,8 +53,9 @@ export default function AdminDoctors() {
       
       // Transform the data to match the expected format
       const transformedDoctors = doctorsData.map(doctor => ({
-        id: doctor.id,
+        id: doctor.id || doctor.userId || doctor._id || doctor.username,
         name: doctor.name || doctor.username || 'Unknown',
+        username: doctor.username || '',
         email: doctor.email || 'N/A',
         phone: doctor.phone || 'N/A',
         specialty: doctor.specialty || 'Not specified',
@@ -63,7 +66,9 @@ export default function AdminDoctors() {
         hospitalName: doctor.hospitalName || 'Not specified',
         education: doctor.education || 'Not specified',
         department: doctor.department || 'Not specified',
-        qualifications: doctor.qualifications || 'Not specified'
+        qualifications: doctor.qualifications || 'Not specified',
+        enabled: doctor.enabled !== false,
+        roles: Array.isArray(doctor.roles) ? doctor.roles : [],
       }));
       
       setDoctors(transformedDoctors);
@@ -80,7 +85,7 @@ export default function AdminDoctors() {
   const handleDeleteDoctor = async (doctorId) => {
     if (window.confirm('Are you sure you want to delete this doctor?')) {
       try {
-        await API.doctors.delete(doctorId);
+        await API.admin.deleteUser(doctorId);
         setDoctors(doctors.filter(doctor => doctor.id !== doctorId));
         alert('Doctor deleted successfully');
       } catch (error) {
@@ -92,8 +97,12 @@ export default function AdminDoctors() {
 
   const handleToggleStatus = async (doctorId) => {
     try {
-      const doctor = doctors.find((d) => d.id === doctorId);
-      await API.doctors.toggleStatus(doctorId, doctor);
+      const user = await API.auth.getUserById(doctorId);
+      await API.admin.updateUser(doctorId, {
+        email: user?.email || '',
+        roles: user?.roles || ['DOCTOR'],
+        enabled: !(user?.enabled !== false),
+      });
       fetchDoctors(); // Refresh the list
     } catch (error) {
       console.error('Error toggling doctor status:', error);
@@ -103,7 +112,7 @@ export default function AdminDoctors() {
 
   const handleVerifyDoctor = async (doctorId) => {
     try {
-      await API.doctors.verify(doctorId);
+      await API.auth.updateUserById(doctorId, { isVerified: true });
       fetchDoctors(); // Refresh the list
     } catch (error) {
       console.error('Error verifying doctor:', error);
@@ -111,103 +120,77 @@ export default function AdminDoctors() {
     }
   };
 
-  const openEditModal = (doctor) => {
+  const openEditModal = async (doctor) => {
     setSelectedDoctor(doctor);
-    setEditDoctor({
-      name: doctor.name || '',
-      email: doctor.email || '',
-      phone: doctor.phone || '',
-      specialty: doctor.specialty || '',
-      licenseNumber: doctor.licenseNumber || '',
-      yearsOfExperience: doctor.experience ? String(doctor.experience).replace(/\D/g, '') : '',
-      department: doctor.department || '',
-      qualifications: doctor.qualifications || '',
+    setEditForm({
+      email: doctor.email === 'N/A' ? '' : doctor.email,
+      specialty: doctor.specialty === 'Not specified' ? '' : doctor.specialty,
+      licenseNumber: doctor.licenseNumber === 'Not provided' ? '' : doctor.licenseNumber,
+      yearsOfExperience: doctor.experience === 'Not specified' ? '' : String(doctor.experience).replace(' years', ''),
+      qualifications: doctor.qualifications === 'Not specified' ? '' : doctor.qualifications,
+      department: doctor.department === 'Not specified' ? '' : doctor.department,
     });
-    setEditError('');
     setShowEditModal(true);
-  };
-
-  const handleEditDoctor = async (e) => {
-    e.preventDefault();
-    if (!selectedDoctor) return;
-    setEditError('');
-
-    try {
-      setIsEditSubmitting(true);
-      await API.doctors.update(selectedDoctor.id, {
-        name: editDoctor.name?.trim() || null,
-        email: editDoctor.email?.trim() || null,
-        phone: editDoctor.phone?.trim() || null,
-        specialty: editDoctor.specialty?.trim() || null,
-        licenseNumber: editDoctor.licenseNumber?.trim() || null,
-        yearsOfExperience: editDoctor.yearsOfExperience
-          ? Number(editDoctor.yearsOfExperience)
-          : null,
-        department: editDoctor.department?.trim() || null,
-        qualifications: editDoctor.qualifications?.trim() || null,
-      });
-
-      setShowEditModal(false);
-      setSelectedDoctor(null);
-      setEditDoctor(null);
-      await fetchDoctors();
-    } catch (err) {
-      setEditError(err?.message || 'Failed to update doctor.');
-    } finally {
-      setIsEditSubmitting(false);
-    }
-  };
-
-  const resetAddDoctorForm = () => {
-    setNewDoctor({
-      username: '',
-      password: '',
-      email: '',
-      name: '',
-      phone: '',
-      specialty: '',
-      licenseNumber: '',
-      yearsOfExperience: '',
-      department: '',
-      qualifications: ''
-    });
-    setSubmitError('');
   };
 
   const handleAddDoctor = async (e) => {
     e.preventDefault();
-    setSubmitError('');
-
-    if (!newDoctor.username || !newDoctor.password || !newDoctor.email || !newDoctor.name) {
-      setSubmitError('Username, password, email and name are required.');
-      return;
-    }
-
     try {
-      setIsSubmitting(true);
+      setSaving(true);
       await API.auth.register({
-        username: newDoctor.username.trim(),
-        password: newDoctor.password,
-        email: newDoctor.email.trim(),
-        name: newDoctor.name.trim(),
-        phone: newDoctor.phone.trim() || null,
+        username: addForm.username.trim(),
+        email: addForm.email.trim(),
+        password: addForm.password,
         roles: 'DOCTOR',
-        specialty: newDoctor.specialty.trim() || null,
-        licenseNumber: newDoctor.licenseNumber.trim() || null,
-        yearsOfExperience: newDoctor.yearsOfExperience
-          ? Number(newDoctor.yearsOfExperience)
-          : null,
-        department: newDoctor.department.trim() || null,
-        qualifications: newDoctor.qualifications.trim() || null,
+        specialty: addForm.specialty.trim(),
+        licenseNumber: addForm.licenseNumber.trim(),
+        yearsOfExperience: addForm.yearsOfExperience ? Number(addForm.yearsOfExperience) : null,
+        qualifications: addForm.qualifications.trim(),
+        department: addForm.department.trim(),
       });
-
       setShowAddModal(false);
-      resetAddDoctorForm();
+      setAddForm({
+        username: '',
+        email: '',
+        password: '',
+        specialty: '',
+        licenseNumber: '',
+        yearsOfExperience: '',
+        qualifications: '',
+        department: '',
+      });
       await fetchDoctors();
-    } catch (err) {
-      setSubmitError(err?.message || 'Failed to add doctor.');
+      alert('Doctor added successfully');
+    } catch (error) {
+      console.error('Error adding doctor:', error);
+      alert(error?.message || 'Failed to add doctor. Please try again.');
     } finally {
-      setIsSubmitting(false);
+      setSaving(false);
+    }
+  };
+
+  const handleEditDoctor = async (e) => {
+    e.preventDefault();
+    if (!selectedDoctor?.id) return;
+    try {
+      setSaving(true);
+      await API.auth.updateUserById(selectedDoctor.id, {
+        email: editForm.email.trim(),
+        specialty: editForm.specialty.trim(),
+        licenseNumber: editForm.licenseNumber.trim(),
+        yearsOfExperience: editForm.yearsOfExperience ? Number(editForm.yearsOfExperience) : null,
+        qualifications: editForm.qualifications.trim(),
+        department: editForm.department.trim(),
+      });
+      setShowEditModal(false);
+      setSelectedDoctor(null);
+      await fetchDoctors();
+      alert('Doctor updated successfully');
+    } catch (error) {
+      console.error('Error updating doctor:', error);
+      alert(error?.message || 'Failed to update doctor. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -474,233 +457,47 @@ export default function AdminDoctors() {
         </div>
       </div>
 
-      {showAddModal && (
+      {showAddModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b px-6 py-4">
-              <h3 className="text-xl font-black text-[#182C61]">Add New Doctor</h3>
-              <button
-                onClick={() => {
-                  setShowAddModal(false);
-                  setSubmitError('');
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <XCircleIcon className="h-6 w-6" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddDoctor} className="space-y-4 px-6 py-5">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <input
-                  type="text"
-                  placeholder="Username *"
-                  value={newDoctor.username}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, username: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="password"
-                  placeholder="Password *"
-                  value={newDoctor.password}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, password: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="email"
-                  placeholder="Email *"
-                  value={newDoctor.email}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, email: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Full Name *"
-                  value={newDoctor.name}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, name: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Phone"
-                  value={newDoctor.phone}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, phone: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Specialty"
-                  value={newDoctor.specialty}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, specialty: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="License Number"
-                  value={newDoctor.licenseNumber}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, licenseNumber: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Years of Experience"
-                  value={newDoctor.yearsOfExperience}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, yearsOfExperience: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Department"
-                  value={newDoctor.department}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, department: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Qualifications"
-                  value={newDoctor.qualifications}
-                  onChange={(e) => setNewDoctor({ ...newDoctor, qualifications: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-              </div>
-
-              {submitError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {submitError}
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setSubmitError('');
-                  }}
-                  className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="rounded-xl bg-[#182C61] px-4 py-2 text-sm font-black text-white disabled:opacity-60"
-                >
-                  {isSubmitting ? 'Adding...' : 'Add Doctor'}
-                </button>
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 border-2 border-slate-100">
+            <h3 className="text-xl font-black text-[#182C61] mb-4">Add Doctor</h3>
+            <form onSubmit={handleAddDoctor} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input required placeholder="Username" value={addForm.username} onChange={(e) => setAddForm((p) => ({ ...p, username: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input required type="email" placeholder="Email" value={addForm.email} onChange={(e) => setAddForm((p) => ({ ...p, email: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input required type="password" placeholder="Password" value={addForm.password} onChange={(e) => setAddForm((p) => ({ ...p, password: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input required placeholder="Specialty" value={addForm.specialty} onChange={(e) => setAddForm((p) => ({ ...p, specialty: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input placeholder="License Number" value={addForm.licenseNumber} onChange={(e) => setAddForm((p) => ({ ...p, licenseNumber: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input type="number" min="0" placeholder="Years of Experience" value={addForm.yearsOfExperience} onChange={(e) => setAddForm((p) => ({ ...p, yearsOfExperience: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input placeholder="Department" value={addForm.department} onChange={(e) => setAddForm((p) => ({ ...p, department: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input placeholder="Qualifications" value={addForm.qualifications} onChange={(e) => setAddForm((p) => ({ ...p, qualifications: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 rounded-xl border">Cancel</button>
+                <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-[#182C61] text-white font-black disabled:opacity-60">{saving ? 'Saving...' : 'Add Doctor'}</button>
               </div>
             </form>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {showEditModal && editDoctor && (
+      {showEditModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b px-6 py-4">
-              <h3 className="text-xl font-black text-[#182C61]">Edit Doctor</h3>
-              <button
-                onClick={() => {
-                  setShowEditModal(false);
-                  setEditError('');
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <XCircleIcon className="h-6 w-6" />
-              </button>
-            </div>
-
-            <form onSubmit={handleEditDoctor} className="space-y-4 px-6 py-5">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <input
-                  type="text"
-                  placeholder="Full Name"
-                  value={editDoctor.name}
-                  onChange={(e) => setEditDoctor({ ...editDoctor, name: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={editDoctor.email}
-                  onChange={(e) => setEditDoctor({ ...editDoctor, email: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Phone"
-                  value={editDoctor.phone}
-                  onChange={(e) => setEditDoctor({ ...editDoctor, phone: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Specialty"
-                  value={editDoctor.specialty}
-                  onChange={(e) => setEditDoctor({ ...editDoctor, specialty: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="License Number"
-                  value={editDoctor.licenseNumber}
-                  onChange={(e) => setEditDoctor({ ...editDoctor, licenseNumber: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Years of Experience"
-                  value={editDoctor.yearsOfExperience}
-                  onChange={(e) => setEditDoctor({ ...editDoctor, yearsOfExperience: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Department"
-                  value={editDoctor.department}
-                  onChange={(e) => setEditDoctor({ ...editDoctor, department: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Qualifications"
-                  value={editDoctor.qualifications}
-                  onChange={(e) => setEditDoctor({ ...editDoctor, qualifications: e.target.value })}
-                  className="rounded-xl border border-gray-200 px-3 py-2"
-                />
-              </div>
-
-              {editError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {editError}
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditModal(false);
-                    setEditError('');
-                  }}
-                  className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isEditSubmitting}
-                  className="rounded-xl bg-[#182C61] px-4 py-2 text-sm font-black text-white disabled:opacity-60"
-                >
-                  {isEditSubmitting ? 'Saving...' : 'Save Changes'}
-                </button>
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 border-2 border-slate-100">
+            <h3 className="text-xl font-black text-[#182C61] mb-4">Edit Doctor</h3>
+            <form onSubmit={handleEditDoctor} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input type="email" placeholder="Email" value={editForm.email} onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input placeholder="Specialty" value={editForm.specialty} onChange={(e) => setEditForm((p) => ({ ...p, specialty: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input placeholder="License Number" value={editForm.licenseNumber} onChange={(e) => setEditForm((p) => ({ ...p, licenseNumber: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input type="number" min="0" placeholder="Years of Experience" value={editForm.yearsOfExperience} onChange={(e) => setEditForm((p) => ({ ...p, yearsOfExperience: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input placeholder="Department" value={editForm.department} onChange={(e) => setEditForm((p) => ({ ...p, department: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <input placeholder="Qualifications" value={editForm.qualifications} onChange={(e) => setEditForm((p) => ({ ...p, qualifications: e.target.value }))} className="border rounded-xl px-3 py-2" />
+              <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowEditModal(false)} className="px-4 py-2 rounded-xl border">Cancel</button>
+                <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-[#182C61] text-white font-black disabled:opacity-60">{saving ? 'Saving...' : 'Save Changes'}</button>
               </div>
             </form>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
