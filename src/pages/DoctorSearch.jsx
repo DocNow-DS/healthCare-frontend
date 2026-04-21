@@ -837,31 +837,63 @@ export default function DoctorSearch() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">Available Time</label>
-                <div className="relative">
-                    <select
-                        required
-                        value={bookForm.time}
-                        disabled={!bookForm.date || loadingSlots}
-                        onChange={(e) => setBookForm((f) => ({ ...f, time: e.target.value }))}
-                        className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-0 font-black text-xs text-[#182C61] focus:ring-2 focus:ring-[#182C61]/10 appearance-none disabled:opacity-50"
-                    >
-                        <option value="">
-                            {!bookForm.date ? 'Select Date First' : loadingSlots ? 'Checking slots...' : 'Pick a time'}
-                        </option>
-                        {slotOptions.map((slot) => (
-                            <option key={slot.value} value={slot.value} disabled={slot.disabled}>
-                            {slot.label} {slot.disabled ? `(${slot.reason})` : ''}
-                            </option>
-                        ))}
-                    </select>
-                    <ClockIcon className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[#808e9b] pointer-events-none" />
-                </div>
-                {bookForm.date && !loadingSlots && (
-                    <p className="text-[8px] font-bold text-[#808e9b] uppercase tracking-widest px-1">
-                        {availableSlotCount} slots available for today
-                    </p>
+              <div className="space-y-4">
+                <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">Available Time Slots</label>
+                {!bookForm.date ? (
+                    <div className="p-8 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
+                        <p className="text-[10px] font-bold text-[#808e9b]">Please select a date first</p>
+                    </div>
+                ) : loadingSlots ? (
+                    <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin h-5 w-5 border-2 border-[#182C61] border-t-transparent rounded-full" />
+                    </div>
+                ) : slotOptions.length === 0 ? (
+                    <div className="p-8 text-center bg-amber-50 rounded-2xl border border-amber-100">
+                        <p className="text-[10px] font-bold text-amber-700">No availability for this date</p>
+                    </div>
+                ) : (
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 scrollbar-hide">
+                        {[
+                            { name: 'Morning', hours: [8, 12] },
+                            { name: 'Afternoon', hours: [12, 17] },
+                            { name: 'Evening', hours: [17, 21] }
+                        ].map(period => {
+                            const periodSlots = slotOptions.filter(s => {
+                                const hour = parseInt(s.value.split(':')[0]);
+                                return hour >= period.hours[0] && hour < period.hours[1];
+                            });
+                            
+                            if (periodSlots.length === 0) return null;
+
+                            return (
+                                <div key={period.name} className="space-y-2">
+                                    <h4 className="text-[8px] font-black uppercase tracking-widest text-[#182C61]/50">{period.name}</h4>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {periodSlots.map(slot => {
+                                            const isSelected = bookForm.time === slot.value;
+                                            return (
+                                                <button
+                                                    key={slot.value}
+                                                    type="button"
+                                                    disabled={slot.disabled}
+                                                    onClick={() => setBookForm(f => ({ ...f, time: slot.value }))}
+                                                    className={`py-2 rounded-xl text-[9px] font-black transition-all border ${
+                                                        slot.disabled
+                                                        ? 'bg-slate-50 border-transparent text-slate-300 cursor-not-allowed line-through'
+                                                        : isSelected
+                                                        ? 'bg-[#182C61] border-[#182C61] text-white shadow-lg shadow-[#182C61]/20'
+                                                        : 'bg-white border-slate-100 text-[#182C61] hover:border-[#182C61]/20 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    {slot.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 )}
               </div>
 
