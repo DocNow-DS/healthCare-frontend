@@ -7,11 +7,68 @@ import {
   StarIcon,
   VideoCameraIcon,
   XMarkIcon,
+  CalendarIcon,
+  ClockIcon,
+  CheckCircleIcon,
+  UsersIcon,
+  BriefcaseIcon,
+  ArrowRightIcon,
+  HandThumbUpIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
 import { API } from '../config/api';
 
-const fallbackImage = 'https://images.unsplash.com/photo-1559839734-2b71f1536783?auto=format&fit=crop&q=80&w=200';
+const specialtyEmoji = {
+  'All': '🏥',
+  'General': '🩺',
+  'Cardiology': '🫀',
+  'Dermatology': '🧪',
+  'Pediatrics': '👶',
+  'Neurology': '🧠',
+  'Orthopedic': '🦴',
+  'Psychiatry': '🧠',
+  'Gastroenterology': '🧪',
+  'Dental': '🦷',
+  'Ophthalmology': '👁️',
+  'Urology': '🧪',
+  'Oncologist': '🎗️',
+  'Dentist': '🦷',
+};
+
+const getDoctorName = (doc) => {
+  if (!doc) return 'Doctor';
+  return withDoctorPrefix(doc.name || doc.fullName || doc.username || 'Doctor');
+};
+
+const getSpecialty = (doc) => {
+  if (!doc) return 'General';
+  return doc.specialization || doc.specialty || 'General Practice';
+};
+
+const FAKE_DOCTOR_IMAGES = [
+  'https://images.unsplash.com/photo-1559839734-2b71f1536783?auto=format&fit=crop&q=80&w=400',
+  'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=400',
+  'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=400',
+  'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&q=80&w=400',
+  'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=400',
+  'https://images.unsplash.com/photo-1651008376811-b90baee60c1f?auto=format&fit=crop&q=80&w=400',
+  'https://images.unsplash.com/photo-1582750433449-648ed127bb54?auto=format&fit=crop&q=80&w=400',
+  'https://images.unsplash.com/photo-1612531388300-473523a54992?auto=format&fit=crop&q=80&w=400',
+];
+
+const fallbackImage = FAKE_DOCTOR_IMAGES[0];
+
+const getDoctorImage = (doc) => {
+  if (!doc) return fallbackImage;
+  const original = doc.image || doc.profilePicture || doc.imageUrl;
+  if (original && !original.includes('default') && original.startsWith('http')) return original;
+  
+  // Deterministic fake image based on ID
+  const idStr = String(doc.id || doc.userId || '0');
+  const index = Math.abs(idStr.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % FAKE_DOCTOR_IMAGES.length;
+  return FAKE_DOCTOR_IMAGES[index];
+};
 const SLOT_MINUTES = 30;
 const SLOT_HOUR_START = 8;
 const SLOT_HOUR_END = 20;
@@ -21,6 +78,16 @@ const DAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRID
 const toDateSafe = (value) => {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const handleImageFallback = (e) => {
+  e.target.src = fallbackImage;
+};
+
+const normalizeDate = (date) => {
+  if (!date) return null;
+  const d = new Date(date);
+  return isNaN(d.getTime()) ? null : d;
 };
 
 const withDoctorPrefix = (name) => {
@@ -222,6 +289,8 @@ export default function DoctorSearch() {
     notes: '',
   });
   const [specialtyOptions, setSpecialtyOptions] = useState(['All']);
+  const [activeTab, setActiveTab] = useState('About');
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
 
   const loadDoctors = async (specialtyFilter) => {
     setLoading(true);
@@ -324,11 +393,18 @@ export default function DoctorSearch() {
   const upcomingAppointments = useMemo(() => {
     const now = new Date();
     return appointments
-      .map((item) => ({ ...item, parsedStart: normalizeDate(item?.startTime || item?.scheduledAt || item?.createdAt) }))
+      .map((item) => {
+        const doc = doctors.find(d => String(d.id) === String(item.doctorId));
+        return { 
+          ...item, 
+          parsedStart: normalizeDate(item?.startTime || item?.scheduledAt || item?.createdAt),
+          specialty: item.specialty || (doc ? getSpecialty(doc) : 'Specialist')
+        };
+      })
       .filter((item) => item.parsedStart && item.parsedStart.getTime() >= now.getTime())
       .sort((a, b) => a.parsedStart.getTime() - b.parsedStart.getTime())
       .slice(0, 3);
-  }, [appointments]);
+  }, [appointments, doctors]);
 
   const openBooking = (doctor) => {
     setBookMessage(null);
@@ -446,321 +522,459 @@ export default function DoctorSearch() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-6">
-        <div className="flex-1">
-          <h1 className="text-4xl font-black text-[#182C61] tracking-tight mb-4">Find specialists</h1>
-          <div className="relative group">
-            <MagnifyingGlassIcon className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[#808e9b] group-focus-within:text-[#182C61] transition-colors" />
-            <input
-              type="text"
-              placeholder="Search by doctor name, specialty, or hospital"
-              className="w-full pl-14 pr-6 py-3.5 bg-white border border-slate-300 rounded-full focus:outline-none focus:ring-4 focus:ring-[#182C61]/10 focus:border-[#182C61] text-[#1e272e] font-semibold text-base transition-all"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-sm font-semibold text-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-            />
+    <div className="flex flex-col lg:flex-row gap-8 animate-in fade-in duration-700">
+      {/* Main Content Area */}
+      <div className="flex-1 space-y-8">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-black text-[#182C61] tracking-tight">
+              Welcome, Audrey!
+            </h1>
+            <p className="text-[#808e9b] mt-1 font-bold">Hello there! Welcome to our medical app. How can we assist you today?</p>
           </div>
-          <button
-            type="button"
-            onClick={() => loadDoctors(selectedSpecialty)}
-            className="p-3 bg-slate-100 border border-slate-200 rounded-xl text-[#182C61] hover:border-[#182C61]/40 transition-all relative"
-            title="Refresh doctors"
-          >
-            <AdjustmentsHorizontalIcon className="h-5 w-5" />
-            Refresh
-          </button>
+          <div className="hidden md:flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm">
+            <CalendarIcon className="h-5 w-5 text-[#182C61]" />
+            <span className="text-sm font-black text-[#182C61]">
+              {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            </span>
+          </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-          {specialtyOptions.map((spec) => {
-            const active = selectedSpecialty === spec;
-            const emoji = specialtyEmoji[spec] || '🩺';
-            return (
-              <button
-                key={spec}
-                type="button"
-                onClick={() => setSelectedSpecialty(spec)}
-                className={`rounded-2xl border p-3 text-left transition ${
-                  active
-                    ? 'border-primary-500 bg-primary-50 text-primary-500'
-                    : 'border-slate-200 bg-white text-[#808e9b] hover:border-primary-500/30'
-                }`}
-              >
-                <p className="text-lg">{emoji}</p>
-                <p className="mt-2 text-[10px] font-black uppercase tracking-widest truncate">{spec}</p>
-              </button>
-            );
-          })}
+        {/* Search Bar */}
+        <div className="relative group">
+          <MagnifyingGlassIcon className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[#808e9b] group-focus-within:text-[#182C61] transition-colors" />
+          <input
+            type="text"
+            placeholder="Search by doctor name, specialty, or hospital"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-14 pr-6 py-4 bg-white border-2 border-transparent rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] font-bold text-sm text-[#1e272e] shadow-xl shadow-[#182C61]/5 transition-all"
+          />
         </div>
-      </div>
 
-      {error ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
-          <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5" />
-          <span className="text-sm font-semibold text-amber-800">{error}</span>
+        {/* Specialty Categories */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-black text-[#182C61]">Specialties</h2>
+            <button className="text-[10px] font-black uppercase tracking-widest text-[#eb2f06] hover:underline">View All</button>
+          </div>
+          <div className="flex items-center gap-4 overflow-x-auto pb-4 scrollbar-hide">
+            {specialtyOptions.map((spec) => {
+              const active = selectedSpecialty === spec;
+              const emoji = specialtyEmoji[spec] || '🩺';
+              return (
+                <button
+                  key={spec}
+                  onClick={() => setSelectedSpecialty(spec)}
+                  className={`flex flex-col items-center justify-center min-w-[100px] h-[100px] rounded-[2rem] border-2 transition-all ${
+                    active 
+                    ? 'bg-[#182C61] border-[#182C61] shadow-xl shadow-[#182C61]/20 transform -translate-y-1' 
+                    : 'bg-white border-slate-50 hover:border-[#182C61]/10'
+                  }`}
+                >
+                  <span className="text-2xl mb-2">{emoji}</span>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${active ? 'text-white' : 'text-[#808e9b]'}`}>{spec}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      ) : null}
 
-      <div className="flex items-center space-x-3 overflow-x-auto pb-2 scrollbar-hide">
-        {specialtyOptions.map((spec) => (
-          <button
-            key={spec}
-            type="button"
-            onClick={() => setSelectedSpecialty(spec)}
-            className={`px-6 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-wide transition-all whitespace-nowrap ${
-              selectedSpecialty === spec
-                ? 'bg-[#182C61] text-white shadow-lg shadow-[#182C61]/20'
-                : 'bg-[#d8e8fb] text-[#182C61] border border-[#c5daf5] hover:bg-[#cfe2fa]'
-            }`}
-          >
-            {spec}
-          </button>
-        ))}
-      </div>
+        {/* Doctor Grid */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-black text-[#182C61]">
+              Recommended {selectedSpecialty !== 'All' ? selectedSpecialty : ''} ({filteredDoctors.length})
+            </h2>
+            <button className="text-[10px] font-black uppercase tracking-widest text-[#eb2f06] hover:underline">View All</button>
+          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {loading ? (
-              <div className="col-span-full text-sm font-semibold text-[#808e9b]">Loading doctors...</div>
+              [1, 2, 3].map(i => (
+                <div key={i} className="h-64 bg-slate-50 rounded-[2rem] animate-pulse" />
+              ))
             ) : filteredDoctors.length === 0 ? (
-              <div className="col-span-full text-sm font-semibold text-[#808e9b]">No doctors match your filter.</div>
+               <div className="col-span-full py-12 text-center bg-white rounded-[2rem] border-2 border-dashed border-slate-100">
+                  <ExclamationTriangleIcon className="h-12 w-12 text-slate-200 mx-auto mb-4" />
+                  <p className="text-sm font-bold text-[#808e9b]">No doctors found matching your criteria</p>
+               </div>
             ) : (
               filteredDoctors.map((doctor) => {
                 const id = String(doctor.id || '');
-                const selected = id === String(effectiveSelectedDoctor?.id || '');
+                const isSelected = id === selectedDoctorId;
                 const isFavorite = favoriteIds.includes(id);
+
                 return (
-                  <button
+                  <div 
                     key={id}
-                    type="button"
-                    onClick={() => setSelectedDoctorId(id)}
-                    className={`text-left rounded-2xl border p-3 transition ${
-                      selected
-                        ? 'border-primary-500 bg-primary-50/40 shadow-md shadow-primary-500/10'
-                        : 'border-slate-200 bg-white hover:border-primary-500/30'
+                    onClick={() => {
+                        setSelectedDoctorId(id);
+                        if (!bookingDoctor || bookingDoctor.id !== doctor.id) {
+                            openBooking(doctor);
+                        }
+                    }}
+                    className={`group relative bg-white p-4 rounded-[2rem] border-2 transition-all cursor-pointer ${
+                      isSelected 
+                      ? 'border-[#182C61] shadow-2xl shadow-[#182C61]/10 transform -translate-y-1' 
+                      : 'border-slate-50 hover:border-[#182C61]/10 hover:shadow-xl'
                     }`}
                   >
-                    <img
-                      src={getDoctorImage(doctor)}
-                      alt={getDoctorName(doctor)}
-                      className="h-28 w-full object-cover rounded-xl bg-slate-100"
-                      onError={handleImageFallback}
-                    />
-                    <div className="mt-3 flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-black text-primary-500 leading-tight">{getDoctorName(doctor)}</p>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[#808e9b] mt-1">{getSpecialty(doctor)}</p>
-                      </div>
-                      <button
-                        type="button"
+                    <div className="relative aspect-[4/3] rounded-[1.5rem] overflow-hidden mb-4 bg-slate-50">
+                      <img 
+                        src={getDoctorImage(doctor)} 
+                        alt={getDoctorName(doctor)}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                        onError={handleImageFallback}
+                      />
+                      <button 
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleFavorite(id);
                         }}
-                        className="p-1 rounded-lg hover:bg-slate-100"
-                        aria-label="Toggle favorite"
+                        className="absolute top-3 right-3 p-2 bg-white/80 backdrop-blur-md rounded-xl shadow-sm hover:bg-white transition-colors"
                       >
-                        <HeartIcon className={`h-5 w-5 ${isFavorite ? 'text-accent-red fill-accent-red' : 'text-slate-400'}`} />
+                        <HeartIcon className={`h-4 w-4 ${isFavorite ? 'text-[#eb2f06] fill-[#eb2f06]' : 'text-[#808e9b]'}`} />
                       </button>
                     </div>
-                    <div className="mt-3 flex items-center justify-between">
-                      <p className="text-lg font-black text-primary-500">${doctor.consultationFee || doctor.fee || 36}/h</p>
-                      <div className="inline-flex items-center gap-1 rounded-full bg-accent-red/5 px-2 py-1">
-                        <StarIcon className="h-3.5 w-3.5 text-accent-red" />
-                        <span className="text-[10px] font-black text-accent-red">{doctor.rating || '4.8'}</span>
+
+                    <div className="space-y-1 mb-4">
+                      <h3 className="font-black text-[#182C61] leading-tight truncate">{getDoctorName(doctor)}</h3>
+                      <p className="text-[10px] font-bold text-[#808e9b] uppercase tracking-widest">{getSpecialty(doctor)}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-50">
+                      <p className="text-lg font-black text-[#182C61]">${doctor.consultationFee || 36}<span className="text-[10px] text-[#808e9b]">/h</span></p>
+                      <div className="flex items-center gap-1 bg-[#eb2f06]/5 px-2 py-1 rounded-lg">
+                        <StarIcon className="h-3 w-3 text-[#eb2f06] fill-[#eb2f06]" />
+                        <span className="text-[10px] font-black text-[#eb2f06]">{doctor.rating || '4.8'}</span>
                       </div>
                     </div>
-                  </button>
+                  </div>
                 );
               })
             )}
           </div>
         </div>
-
-        <div className="space-y-4">
-          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-lg shadow-primary-500/5">
-            <h3 className="text-base font-black text-primary-500 mb-3">
-              Upcoming Schedule ({upcomingAppointments.length})
-            </h3>
-            <div className="space-y-3">
-              {upcomingAppointments.length === 0 ? (
-                <p className="text-sm font-semibold text-[#808e9b]">No upcoming appointments found.</p>
-              ) : (
-                upcomingAppointments.map((item, idx) => (
-                  <div key={item.id || idx} className="rounded-xl border border-slate-200 p-3 bg-slate-50/60">
-                    <p className="text-sm font-black text-primary-500">{item.doctorName || `Doctor ${idx + 1}`}</p>
-                    <div className="mt-2 flex items-center justify-between text-[11px] text-[#808e9b] font-bold">
-                      <span className="inline-flex items-center gap-1">
-                        <CalendarIcon className="h-4 w-4" />
-                        {normalizeDate(item.startTime || item.scheduledAt || item.createdAt)?.toLocaleDateString() || 'Pending'}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <ClockIcon className="h-4 w-4" />
-                        {normalizeDate(item.startTime || item.scheduledAt || item.createdAt)?.toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        }) || '--:--'}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        ) : (
-          filteredDoctors.map((doctor) => (
-          <div key={doctor.id} className="bg-white border border-slate-300/70 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
-            <div className="flex items-start justify-between mb-4">
-              <div />
-              <span className="text-sm font-semibold text-slate-500 flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${doctor.enabled !== false ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                {doctor.enabled !== false ? 'online' : 'offline'}
-              </span>
-            </div>
-
-            <div>
-              <h3 className="text-xl md:text-2xl leading-tight font-black text-[#111827]">
-                {withDoctorPrefix(doctor.name || doctor.fullName || doctor.username || 'Doctor')}
-              </h3>
-              <p className="text-xs text-slate-600 mt-1 leading-5">
-                {doctor.specialization || doctor.specialty || 'General specialist'}
-                {(doctor.hospitalName || doctor.hospital) ? `, ${doctor.hospitalName || doctor.hospital}` : ''}
-              </p>
-            </div>
-
-            <div className="mt-5 pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs text-slate-700">Consultation Fee:</p>
-                <p className="text-xl leading-none font-black text-emerald-600 mt-1">
-                  LKR {doctor.consultationFee || doctor.fee || 'N/A'}
-                </p>
-                <p className="text-xs font-black text-slate-800 mt-4">VIEW PROFILE</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => openBooking(doctor)}
-                className="bg-[#1e3a8a] hover:bg-[#1d357d] text-white font-black uppercase tracking-wide text-[11px] px-6 py-3 rounded-xl shadow-lg shadow-[#1e3a8a]/25"
-              >
-                Book
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
 
-      {bookingDoctor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary-500/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl border-2 border-slate-100 shadow-2xl max-w-md w-full p-8 relative">
+      {/* Right Sidebar */}
+      <div className="w-full lg:w-[400px] space-y-8">
+        {/* Upcoming Schedule */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-black text-[#182C61]">Upcoming Schedule</h2>
+            <span className="bg-[#182C61] text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+              {upcomingAppointments.length}
+            </span>
+          </div>
+          
+          <div className="space-y-3">
+            {upcomingAppointments.length === 0 ? (
+              <div className="p-6 text-center bg-slate-50 rounded-[2rem] border border-slate-100">
+                <CalendarIcon className="h-8 w-8 text-slate-200 mx-auto mb-2" />
+                <p className="text-[10px] font-bold text-[#808e9b]">No upcoming appointments</p>
+              </div>
+            ) : (
+              upcomingAppointments.map((item) => (
+                <div key={item.id} className="bg-white p-4 rounded-[1.5rem] border border-slate-50 shadow-sm flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-xl bg-[#182C61]/5 flex items-center justify-center text-xl">
+                    {specialtyEmoji[item.specialty] || '🩺'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs font-black text-[#182C61] truncate">{item.doctorName}</h4>
+                    <p className="text-[10px] font-bold text-[#808e9b] uppercase tracking-widest">{item.specialty || 'General'}</p>
+                    <div className="flex items-center gap-3 mt-2 text-[9px] font-black text-[#182C61]">
+                        <span className="flex items-center gap-1">
+                            <CalendarIcon className="h-3 w-3 text-[#eb2f06]" />
+                            {normalizeDate(item.startTime)?.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </span>
+                        <span className="flex items-center gap-1">
+                            <ClockIcon className="h-3 w-3 text-[#eb2f06]" />
+                            {normalizeDate(item.startTime)?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                    </div>
+                  </div>
+                  <button className="p-2 bg-[#182C61] text-white rounded-xl shadow-lg shadow-[#182C61]/20">
+                     <VideoCameraIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              ))
+            )}
+            <button className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-[#182C61] hover:text-[#eb2f06] transition-colors">
+              Show All <ArrowRightIcon className="inline h-3 w-3 ml-1" />
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Doctor Detail/Booking */}
+        {effectiveSelectedDoctor && (
+          <div className="bg-white rounded-[2.5rem] border-2 border-slate-50 shadow-2xl shadow-[#182C61]/5 flex flex-col overflow-hidden animate-in slide-in-from-right-8 duration-500">
+            {/* Doctor Info */}
+            <div className="p-6 bg-gradient-to-br from-slate-50 to-white border-b border-slate-50">
+              <div className="flex items-center gap-4 mb-6">
+                <img 
+                  src={getDoctorImage(effectiveSelectedDoctor)} 
+                  alt={getDoctorName(effectiveSelectedDoctor)}
+                  className="h-16 w-16 rounded-2xl object-cover ring-4 ring-white shadow-lg"
+                />
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-black text-[#182C61] leading-tight truncate">{getDoctorName(effectiveSelectedDoctor)}</h3>
+                  <p className="text-[10px] font-bold text-[#808e9b] uppercase tracking-widest mb-2">{getSpecialty(effectiveSelectedDoctor)}</p>
+                  <p className="text-xl font-black text-[#eb2f06]">${effectiveSelectedDoctor.consultationFee || 36}<span className="text-xs text-[#808e9b]">/h</span></p>
+                </div>
+                <button className="p-3 bg-[#182C61] text-white rounded-2xl shadow-xl shadow-[#182C61]/20">
+                    <VideoCameraIcon className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Experience', value: '5 years', icon: BriefcaseIcon, color: 'text-indigo-600 bg-indigo-50' },
+                  { label: 'Patients', value: '9845', icon: UsersIcon, color: 'text-emerald-600 bg-emerald-50' },
+                  { label: 'Reviews', value: '6.09K', icon: HandThumbUpIcon, color: 'text-orange-600 bg-orange-50' }
+                ].map((stat, i) => (
+                  <div key={i} className="p-3 rounded-2xl bg-white border border-slate-50 shadow-sm text-center">
+                    <div className={`w-8 h-8 ${stat.color} rounded-xl flex items-center justify-center mx-auto mb-2`}>
+                        <stat.icon className="h-4 w-4" />
+                    </div>
+                    <p className="text-[10px] font-black text-[#182C61]">{stat.value}</p>
+                    <p className="text-[8px] font-bold text-[#808e9b] uppercase tracking-wider">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="px-6 pt-4">
+              <div className="flex items-center justify-between border-b border-slate-50">
+                {['About', 'Schedules', 'Experience', 'Review'].map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`pb-3 text-[10px] font-black uppercase tracking-widest transition-all relative ${
+                      activeTab === tab ? 'text-[#182C61]' : 'text-[#808e9b] hover:text-[#182C61]'
+                    }`}
+                  >
+                    {tab}
+                    {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#182C61] rounded-full" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tab Content */}
+            <div className="p-6 flex-1 overflow-y-auto min-h-[300px]">
+              {activeTab === 'About' && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                    <p className="text-xs text-[#1e272e] leading-relaxed font-medium">
+                        {getDoctorName(effectiveSelectedDoctor)} is a renowned {getSpecialty(effectiveSelectedDoctor)} specialist known for his extraordinary talents in treating healthcare conditions. With a background in precise medicine and a passion for helping patients regain their health.
+                    </p>
+                    <p className="text-xs text-[#1e272e] leading-relaxed font-medium">
+                        He is celebrated for his groundbreaking techniques and personalized approach to patient care.
+                    </p>
+                    
+                    <div className="pt-6 border-t border-slate-50">
+                        <button 
+                            onClick={() => setIsBookingModalOpen(true)}
+                            className="w-full py-4 bg-[#182C61] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#182C61]/20 hover:bg-[#eb2f06] transition-all transform active:scale-95"
+                        >
+                            Booking Appointment
+                        </button>
+                    </div>
+                </div>
+              )}
+              {activeTab !== 'About' && (
+                <div className="flex flex-col items-center justify-center py-12 text-center text-[#808e9b]">
+                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                        <ClockIcon className="h-8 w-8 text-slate-200" />
+                    </div>
+                    <p className="text-xs font-bold">{activeTab} information coming soon</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Booking Modal */}
+      {isBookingModalOpen && bookingDoctor && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[#182C61]/40 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 shadow-2xl max-w-4xl w-full overflow-hidden relative animate-in zoom-in-95 duration-300 flex flex-col md:flex-row">
+            
+            {/* Close Button */}
             <button
               type="button"
-              onClick={() => setBookingDoctor(null)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-[#808e9b] hover:bg-slate-50"
-              aria-label="Close"
+              onClick={() => setIsBookingModalOpen(false)}
+              className="absolute top-6 right-6 z-10 p-2 rounded-xl text-[#808e9b] hover:bg-slate-50 transition-colors"
             >
-              <XMarkIcon className="h-6 w-6" />
+              <XMarkIcon className="h-5 w-5" />
             </button>
-            <div className="mb-6 rounded-2xl bg-gradient-to-r from-[#182C61]/8 to-[#eb2f06]/8 border border-[#182C61]/10 p-4">
-              <h2 className="text-2xl font-black text-[#182C61] mb-1">Book appointment</h2>
-              <p className="text-sm text-[#808e9b] font-bold">
-                Secure your slot with real-time availability checks.
-              </p>
+
+            {/* Left Panel: Doctor Info & Date */}
+            <div className="w-full md:w-[350px] bg-slate-50 p-8 border-r border-slate-100 space-y-8">
+                <div className="space-y-4">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#eb2f06]/5 text-[#eb2f06] text-[9px] font-black uppercase tracking-widest">
+                        <CalendarIcon className="h-3 w-3" />
+                        Booking details
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-4 mb-4">
+                            <img 
+                                src={getDoctorImage(bookingDoctor)} 
+                                alt={getDoctorName(bookingDoctor)}
+                                className="h-16 w-16 rounded-2xl object-cover ring-4 ring-white shadow-lg"
+                            />
+                            <div>
+                                <h2 className="text-xl font-black text-[#182C61] leading-tight">{getDoctorName(bookingDoctor)}</h2>
+                                <p className="text-[10px] text-[#808e9b] font-bold uppercase tracking-widest">{getSpecialty(bookingDoctor)}</p>
+                            </div>
+                        </div>
+                        <p className="text-[11px] text-[#1e272e] leading-relaxed font-medium">
+                            Please select your preferred date and time for the consultation with {getDoctorName(bookingDoctor)}.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="space-y-3 pt-6 border-t border-slate-200">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">1. Select Date</label>
+                    <input
+                        type="date"
+                        required
+                        min={new Date().toISOString().slice(0, 10)}
+                        value={bookForm.date}
+                        onChange={(e) => setBookForm((f) => ({ ...f, date: e.target.value, time: '' }))}
+                        className="w-full px-4 py-4 rounded-2xl bg-white border-2 border-transparent shadow-sm shadow-[#182C61]/5 font-black text-xs text-[#182C61] focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] transition-all"
+                    />
+                </div>
+
+                <div className="hidden md:block pt-8">
+                     <p className="text-[9px] font-bold text-[#808e9b] leading-relaxed">
+                        Need help? Contact our support team for assistance with your booking.
+                     </p>
+                </div>
             </div>
-            <p className="text-sm text-[#808e9b] font-bold mb-6">
-              {withDoctorPrefix(bookingDoctor.name || bookingDoctor.fullName || bookingDoctor.username)} —{' '}
-              {bookingDoctor.specialization || bookingDoctor.specialty || 'Doctor'}
-            </p>
-            <form onSubmit={submitBooking} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-2">
-                  Appointment date
-                </label>
-                <input
-                  type="date"
-                  required
-                  min={new Date().toISOString().slice(0, 10)}
-                  value={bookForm.date}
-                  onChange={(e) =>
-                    setBookForm((f) => ({ ...f, date: e.target.value, time: '' }))
-                  }
-                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-[#182C61] bg-white"
-                />
+
+            {/* Right Panel: Time & Remaining Form */}
+            <form 
+                onSubmit={async (e) => { await submitBooking(e); }} 
+                className="flex-1 p-8 md:p-10 space-y-6 overflow-y-auto max-h-[90vh]"
+            >
+              <div className="space-y-4">
+                <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">2. Pick a time slot</label>
+                {!bookForm.date ? (
+                    <div className="py-12 px-8 text-center bg-white rounded-3xl border-2 border-dashed border-slate-100">
+                         <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                             <ClockIcon className="h-6 w-6 text-slate-200" />
+                         </div>
+                        <p className="text-[11px] font-bold text-[#808e9b]">Select a date on the left to see availability</p>
+                    </div>
+                ) : loadingSlots ? (
+                    <div className="flex flex-col items-center justify-center py-12 gap-3">
+                        <div className="animate-spin h-6 w-6 border-2 border-[#182C61] border-t-transparent rounded-full" />
+                        <p className="text-[10px] font-black text-[#182C61] uppercase tracking-widest">Checking availability...</p>
+                    </div>
+                ) : slotOptions.length === 0 ? (
+                    <div className="py-12 px-8 text-center bg-amber-50 rounded-3xl border border-amber-100">
+                        <p className="text-[11px] font-black text-amber-700 uppercase tracking-widest">No slots today</p>
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        {[
+                            { name: 'Morning', hours: [8, 12], icon: '🌅' },
+                            { name: 'Afternoon', hours: [12, 17], icon: '☀️' },
+                            { name: 'Evening', hours: [17, 21], icon: '🌙' }
+                        ].map(period => {
+                            const periodSlots = slotOptions.filter(s => {
+                                const hour = parseInt(s.value.split(':')[0]);
+                                return hour >= period.hours[0] && hour < period.hours[1];
+                            });
+                            
+                            if (periodSlots.length === 0) return null;
+
+                            return (
+                                <div key={period.name} className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs">{period.icon}</span>
+                                        <h4 className="text-[9px] font-black uppercase tracking-widest text-[#182C61]">{period.name}</h4>
+                                    </div>
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                        {periodSlots.map(slot => {
+                                            const isSelected = bookForm.time === slot.value;
+                                            return (
+                                                <button
+                                                    key={slot.value}
+                                                    type="button"
+                                                    disabled={slot.disabled}
+                                                    onClick={() => setBookForm(f => ({ ...f, time: slot.value }))}
+                                                    className={`py-3 rounded-2xl text-[10px] font-black transition-all border ${
+                                                        slot.disabled
+                                                        ? 'bg-slate-50 border-transparent text-slate-300 cursor-not-allowed line-through'
+                                                        : isSelected
+                                                        ? 'bg-[#182C61] border-[#182C61] text-white shadow-xl shadow-[#182C61]/20 transform scale-105'
+                                                        : 'bg-white border-slate-100 text-[#182C61] hover:border-[#182C61]/30 hover:shadow-lg hover:shadow-[#182C61]/5'
+                                                    }`}
+                                                >
+                                                    {slot.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
               </div>
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-2">
-                  Time slot
-                </label>
-                <select
-                  required
-                  value={bookForm.time}
-                  disabled={!bookForm.date || loadingSlots}
-                  onChange={(e) => setBookForm((f) => ({ ...f, time: e.target.value }))}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-[#182C61] bg-white disabled:bg-slate-50 disabled:text-slate-400"
-                >
-                  <option value="">
-                    {!bookForm.date
-                      ? 'Select a date first'
-                      : loadingSlots
-                        ? 'Loading availability...'
-                        : availableSlotCount > 0
-                          ? 'Select available slot'
-                          : 'No available slots'}
-                  </option>
-                  {slotOptions.map((slot) => (
-                    <option key={slot.value} value={slot.value} disabled={slot.disabled}>
-                      {slot.disabled ? `${slot.label} (${slot.reason})` : slot.label}
-                    </option>
-                  ))}
-                </select>
-                {bookForm.date && !loadingSlots ? (
-                  <p className="mt-2 text-[11px] font-semibold text-[#808e9b]">
-                    {availableSlotCount} available slots for this date.
-                  </p>
-                ) : null}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                  <div className="space-y-3">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">3. Visit Type</label>
+                    <div className="flex gap-2">
+                        {['ONLINE', 'IN_PERSON'].map(type => (
+                            <button
+                                key={type}
+                                type="button"
+                                onClick={() => setBookForm(f => ({ ...f, consultationType: type }))}
+                                className={`flex-1 py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${
+                                    bookForm.consultationType === type 
+                                    ? 'bg-[#eb2f06] text-white shadow-xl shadow-[#eb2f06]/10' 
+                                    : 'bg-slate-50 text-[#808e9b] hover:bg-slate-100'
+                                }`}
+                            >
+                                {type.replace('_', ' ')}
+                            </button>
+                        ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">4. Notes</label>
+                    <textarea
+                      value={bookForm.notes}
+                      onChange={(e) => setBookForm((f) => ({ ...f, notes: e.target.value }))}
+                      rows={1}
+                      className="w-full px-4 py-4 rounded-2xl bg-slate-50 border-0 font-bold text-xs text-[#1e272e] focus:ring-4 focus:ring-[#182C61]/5 min-h-[52px]"
+                      placeholder="Symptoms..."
+                    />
+                  </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-2">
-                  Consultation type
-                </label>
-                <select
-                  value={bookForm.consultationType}
-                  onChange={(e) =>
-                    setBookForm((f) => ({ ...f, consultationType: e.target.value, time: '' }))
-                  }
-                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-[#182C61]"
-                >
-                  <option value="ONLINE">Online</option>
-                  <option value="IN_PERSON">In person</option>
-                </select>
-              </div>
-              {bookForm.date && !loadingSlots && slotOptions.length === 0 ? (
-                <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  No active availability for this doctor on the selected date.
-                </p>
-              ) : null}
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-[#808e9b] mb-2">
-                  Notes (optional)
-                </label>
-                <textarea
-                  value={bookForm.notes}
-                  onChange={(e) => setBookForm((f) => ({ ...f, notes: e.target.value }))}
-                  rows={2}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-primary-500"
-                  placeholder="Reason for visit..."
-                />
-              </div>
+
               {bookMessage && (
-                <p className={`text-sm font-bold ${bookMessage.type === 'ok' ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {bookMessage.type === 'ok' ? <CheckCircleIcon className="inline h-4 w-4 mr-1" /> : null}
-                  {bookMessage.text}
-                </p>
+                <div className={`p-4 rounded-[1.5rem] text-[11px] font-bold flex items-center gap-3 ${bookMessage.type === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                    {bookMessage.type === 'ok' ? <CheckCircleIcon className="h-5 w-5" /> : <ExclamationTriangleIcon className="h-4 w-4" />}
+                    {bookMessage.text}
+                </div>
               )}
+
               <button
                 type="submit"
                 disabled={booking || !bookForm.date || !bookForm.time || loadingSlots}
-                className="btn-primary w-full py-4 text-xs uppercase tracking-widest font-black disabled:opacity-50"
+                className="w-full py-5 bg-[#182C61] text-white rounded-[2rem] text-xs font-black uppercase tracking-widest shadow-2xl shadow-[#182C61]/20 hover:bg-[#eb2f06] transition-all transform active:scale-[0.98] disabled:opacity-50 mt-4"
               >
-                {booking ? 'Sending...' : 'Request appointment'}
+                {booking ? 'Confiming appointment...' : 'Confirm Appointment'}
               </button>
             </form>
           </div>
