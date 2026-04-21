@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { API } from '../config/api';
-import { DocumentTextIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { DocumentTextIcon, ExclamationTriangleIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { getGeneratedBillingReports } from '../utils/billingReports';
 import UploadMedicalDocument from '../components/UploadMedicalDocument';
 import { normalizeDocumentUrl } from '../utils/documentUrl';
@@ -45,9 +45,23 @@ export default function PatientReports() {
     loadData();
   }, []);
 
+  const handleDelete = async (reportId) => {
+    if (!window.confirm('Are you sure you want to delete this report?')) return;
+    try {
+      await API.patients.deleteReport(reportId);
+      await loadData();
+    } catch (err) {
+      setWarning(err?.message || 'Failed to delete report.');
+    }
+  };
+
   const handleUpload = async (file, description) => {
-    await API.patients.uploadReport(file, description);
-    await loadData();
+    try {
+      await API.patients.uploadReport(file, description);
+      await loadData();
+    } catch (err) {
+      setWarning(err?.message || 'Failed to upload report.');
+    }
   };
 
   const getVisibleItems = () => {
@@ -109,22 +123,36 @@ export default function PatientReports() {
         ) : (
           <div className="space-y-3">
             {visibleItems.map((item, index) => (
-              <div key={item.id || index} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                <div className="flex items-center gap-2">
-                  <DocumentTextIcon className="h-5 w-5 text-primary-500" />
-                  <p className="text-sm font-black text-primary-500">{item.title || item.name || 'Medical Document'}</p>
+              <div key={item.id || index} className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <DocumentTextIcon className="h-5 w-5 text-primary-500" />
+                    <p className="text-sm font-black text-primary-500">{item.title || item.name || item.fileName || 'Medical Document'}</p>
+                  </div>
+                  <p className="text-xs font-bold text-[#808e9b] mt-1">{item.description || item.notes || 'No description provided'}</p>
                 </div>
-                <p className="text-xs font-bold text-[#808e9b] mt-1">{item.description || item.notes || 'No description provided'}</p>
-                {normalizeDocumentUrl(item.filePath || item.fileUrl).startsWith('http') ? (
-                  <a
-                    href={normalizeDocumentUrl(item.filePath || item.fileUrl)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-block mt-2 text-xs font-black text-primary-500 hover:underline"
-                  >
-                    Open document
-                  </a>
-                ) : null}
+                <div className="flex items-center gap-3">
+                  {normalizeDocumentUrl(item.filePath || item.fileUrl).startsWith('http') ? (
+                    <a
+                      href={normalizeDocumentUrl(item.filePath || item.fileUrl)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-block text-xs font-black text-primary-500 hover:underline whitespace-nowrap"
+                    >
+                      Open document
+                    </a>
+                  ) : null}
+                  {(activeTab === 'reports' || activeTab === 'all') && item.id && !item.prescriptionId && !item.id.toString().startsWith('bill-') && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(item.id)}
+                      className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete Report"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

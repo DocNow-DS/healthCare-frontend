@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  MagnifyingGlassIcon,
   AdjustmentsHorizontalIcon,
   ExclamationTriangleIcon,
+  HeartIcon,
+  MagnifyingGlassIcon,
+  StarIcon,
+  VideoCameraIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
@@ -199,6 +202,7 @@ export default function DoctorSearch() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('All');
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [bookingDoctor, setBookingDoctor] = useState(null);
   const [booking, setBooking] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -207,14 +211,16 @@ export default function DoctorSearch() {
   const [doctorBookedAppointments, setDoctorBookedAppointments] = useState([]);
   const [patientBookedAppointments, setPatientBookedAppointments] = useState([]);
   const [bookMessage, setBookMessage] = useState(null);
+  const [favoriteIds, setFavoriteIds] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [selectedDoctorDetails, setSelectedDoctorDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const [bookForm, setBookForm] = useState({
     date: '',
     time: '',
     consultationType: 'ONLINE',
     notes: '',
   });
-
-  /** Specialty chips; built when loading with &quot;All&quot; so filters stay complete while viewing one specialty. */
   const [specialtyOptions, setSpecialtyOptions] = useState(['All']);
 
   const loadDoctors = async (specialtyFilter) => {
@@ -225,10 +231,13 @@ export default function DoctorSearch() {
       const list = await API.patientBooking.listDoctors(param);
       const arr = Array.isArray(list) ? list : [];
       setDoctors(arr);
+      if (arr.length > 0 && !selectedDoctorId) {
+        setSelectedDoctorId(String(arr[0].id || ''));
+      }
       if (specialtyFilter === 'All') {
         const next = new Set(['All']);
         arr.forEach((doc) => {
-          const spec = doc?.specialty || doc?.specialization;
+          const spec = getSpecialty(doc);
           if (typeof spec === 'string' && spec.trim()) next.add(spec.trim());
         });
         setSpecialtyOptions(Array.from(next));
@@ -241,10 +250,23 @@ export default function DoctorSearch() {
     }
   };
 
+  const loadAppointments = async () => {
+    try {
+      const list = await API.patientAppointments.list();
+      setAppointments(Array.isArray(list) ? list : []);
+    } catch {
+      setAppointments([]);
+    }
+  };
+
   useEffect(() => {
     loadDoctors(selectedSpecialty);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch when specialty chip changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSpecialty]);
+
+  useEffect(() => {
+    loadAppointments();
+  }, []);
 
   const filteredDoctors = useMemo(
     () =>
@@ -258,6 +280,55 @@ export default function DoctorSearch() {
       }),
     [doctors, searchTerm],
   );
+
+  const selectedDoctor = useMemo(() => {
+    const inFiltered = filteredDoctors.find((d) => String(d.id || '') === selectedDoctorId);
+    if (inFiltered) return inFiltered;
+    return filteredDoctors[0] || null;
+  }, [filteredDoctors, selectedDoctorId]);
+
+  useEffect(() => {
+    const id = String(selectedDoctor?.id || '');
+    if (!id) {
+      setSelectedDoctorDetails(null);
+      return;
+    }
+
+    let alive = true;
+    const loadSelectedDoctorDetails = async () => {
+      setDetailsLoading(true);
+      try {
+        const details = await API.doctors.getById(id);
+        if (alive) setSelectedDoctorDetails(details || null);
+      } catch {
+        if (alive) setSelectedDoctorDetails(null);
+      } finally {
+        if (alive) setDetailsLoading(false);
+      }
+    };
+
+    loadSelectedDoctorDetails();
+    return () => {
+      alive = false;
+    };
+  }, [selectedDoctor]);
+
+  const effectiveSelectedDoctor = useMemo(() => {
+    if (!selectedDoctor) return null;
+    return {
+      ...selectedDoctor,
+      ...(selectedDoctorDetails || {}),
+    };
+  }, [selectedDoctor, selectedDoctorDetails]);
+
+  const upcomingAppointments = useMemo(() => {
+    const now = new Date();
+    return appointments
+      .map((item) => ({ ...item, parsedStart: normalizeDate(item?.startTime || item?.scheduledAt || item?.createdAt) }))
+      .filter((item) => item.parsedStart && item.parsedStart.getTime() >= now.getTime())
+      .sort((a, b) => a.parsedStart.getTime() - b.parsedStart.getTime())
+      .slice(0, 3);
+  }, [appointments]);
 
   const openBooking = (doctor) => {
     setBookMessage(null);
@@ -369,6 +440,11 @@ export default function DoctorSearch() {
     }
   };
 
+  const toggleFavorite = (id) => {
+    const key = String(id || '');
+    setFavoriteIds((prev) => (prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]));
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-6">
@@ -382,10 +458,9 @@ export default function DoctorSearch() {
               className="w-full pl-14 pr-6 py-3.5 bg-white border border-slate-300 rounded-full focus:outline-none focus:ring-4 focus:ring-[#182C61]/10 focus:border-[#182C61] text-[#1e272e] font-semibold text-base transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-sm font-semibold text-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
             />
           </div>
-        </div>
-        <div className="flex items-center space-x-3">
           <button
             type="button"
             onClick={() => loadDoctors(selectedSpecialty)}
@@ -393,7 +468,30 @@ export default function DoctorSearch() {
             title="Refresh doctors"
           >
             <AdjustmentsHorizontalIcon className="h-5 w-5" />
+            Refresh
           </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+          {specialtyOptions.map((spec) => {
+            const active = selectedSpecialty === spec;
+            const emoji = specialtyEmoji[spec] || '🩺';
+            return (
+              <button
+                key={spec}
+                type="button"
+                onClick={() => setSelectedSpecialty(spec)}
+                className={`rounded-2xl border p-3 text-left transition ${
+                  active
+                    ? 'border-primary-500 bg-primary-50 text-primary-500'
+                    : 'border-slate-200 bg-white text-[#808e9b] hover:border-primary-500/30'
+                }`}
+              >
+                <p className="text-lg">{emoji}</p>
+                <p className="mt-2 text-[10px] font-black uppercase tracking-widest truncate">{spec}</p>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -421,16 +519,93 @@ export default function DoctorSearch() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {loading ? (
-          <div className="col-span-full text-sm font-bold text-[#808e9b]">Loading doctors...</div>
-        ) : doctors.length === 0 ? (
-          <div className="col-span-full text-sm font-bold text-[#808e9b]">
-            No doctors returned. Try refreshing or check the doctor service.
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {loading ? (
+              <div className="col-span-full text-sm font-semibold text-[#808e9b]">Loading doctors...</div>
+            ) : filteredDoctors.length === 0 ? (
+              <div className="col-span-full text-sm font-semibold text-[#808e9b]">No doctors match your filter.</div>
+            ) : (
+              filteredDoctors.map((doctor) => {
+                const id = String(doctor.id || '');
+                const selected = id === String(effectiveSelectedDoctor?.id || '');
+                const isFavorite = favoriteIds.includes(id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setSelectedDoctorId(id)}
+                    className={`text-left rounded-2xl border p-3 transition ${
+                      selected
+                        ? 'border-primary-500 bg-primary-50/40 shadow-md shadow-primary-500/10'
+                        : 'border-slate-200 bg-white hover:border-primary-500/30'
+                    }`}
+                  >
+                    <img
+                      src={getDoctorImage(doctor)}
+                      alt={getDoctorName(doctor)}
+                      className="h-28 w-full object-cover rounded-xl bg-slate-100"
+                      onError={handleImageFallback}
+                    />
+                    <div className="mt-3 flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-black text-primary-500 leading-tight">{getDoctorName(doctor)}</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#808e9b] mt-1">{getSpecialty(doctor)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavorite(id);
+                        }}
+                        className="p-1 rounded-lg hover:bg-slate-100"
+                        aria-label="Toggle favorite"
+                      >
+                        <HeartIcon className={`h-5 w-5 ${isFavorite ? 'text-accent-red fill-accent-red' : 'text-slate-400'}`} />
+                      </button>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <p className="text-lg font-black text-primary-500">${doctor.consultationFee || doctor.fee || 36}/h</p>
+                      <div className="inline-flex items-center gap-1 rounded-full bg-accent-red/5 px-2 py-1">
+                        <StarIcon className="h-3.5 w-3.5 text-accent-red" />
+                        <span className="text-[10px] font-black text-accent-red">{doctor.rating || '4.8'}</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
           </div>
-        ) : filteredDoctors.length === 0 ? (
-          <div className="col-span-full text-sm font-bold text-[#808e9b]">
-            No doctors match your filters. Clear the search box or pick &quot;All&quot;.
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-lg shadow-primary-500/5">
+            <h3 className="text-base font-black text-primary-500 mb-3">
+              Upcoming Schedule ({upcomingAppointments.length})
+            </h3>
+            <div className="space-y-3">
+              {upcomingAppointments.length === 0 ? (
+                <p className="text-sm font-semibold text-[#808e9b]">No upcoming appointments found.</p>
+              ) : (
+                upcomingAppointments.map((item, idx) => (
+                  <div key={item.id || idx} className="rounded-xl border border-slate-200 p-3 bg-slate-50/60">
+                    <p className="text-sm font-black text-primary-500">{item.doctorName || `Doctor ${idx + 1}`}</p>
+                    <div className="mt-2 flex items-center justify-between text-[11px] text-[#808e9b] font-bold">
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarIcon className="h-4 w-4" />
+                        {normalizeDate(item.startTime || item.scheduledAt || item.createdAt)?.toLocaleDateString() || 'Pending'}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <ClockIcon className="h-4 w-4" />
+                        {normalizeDate(item.startTime || item.scheduledAt || item.createdAt)?.toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        }) || '--:--'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         ) : (
           filteredDoctors.map((doctor) => (
@@ -470,12 +645,11 @@ export default function DoctorSearch() {
               </button>
             </div>
           </div>
-          ))
-        )}
+        </div>
       </div>
 
       {bookingDoctor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#182C61]/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary-500/40 backdrop-blur-sm">
           <div className="bg-white rounded-3xl border-2 border-slate-100 shadow-2xl max-w-md w-full p-8 relative">
             <button
               type="button"
@@ -571,14 +745,13 @@ export default function DoctorSearch() {
                   value={bookForm.notes}
                   onChange={(e) => setBookForm((f) => ({ ...f, notes: e.target.value }))}
                   rows={2}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-[#182C61]"
-                  placeholder="Reason for visit…"
+                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 font-bold text-primary-500"
+                  placeholder="Reason for visit..."
                 />
               </div>
               {bookMessage && (
-                <p
-                  className={`text-sm font-bold ${bookMessage.type === 'ok' ? 'text-emerald-600' : 'text-red-600'}`}
-                >
+                <p className={`text-sm font-bold ${bookMessage.type === 'ok' ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {bookMessage.type === 'ok' ? <CheckCircleIcon className="inline h-4 w-4 mr-1" /> : null}
                   {bookMessage.text}
                 </p>
               )}
@@ -587,7 +760,7 @@ export default function DoctorSearch() {
                 disabled={booking || !bookForm.date || !bookForm.time || loadingSlots}
                 className="btn-primary w-full py-4 text-xs uppercase tracking-widest font-black disabled:opacity-50"
               >
-                {booking ? 'Sending…' : 'Request appointment'}
+                {booking ? 'Sending...' : 'Request appointment'}
               </button>
             </form>
           </div>

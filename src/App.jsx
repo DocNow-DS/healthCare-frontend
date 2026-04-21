@@ -13,6 +13,7 @@ import Payments from './pages/Payments.jsx'
 import AdminDoctors from './pages/AdminDoctors.jsx'
 import AdminPatients from './pages/AdminPatients.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
+import AdminSettings from './pages/AdminSettings.jsx'
 import DoctorDashboard from './pages/DoctorDashboard.jsx'
 import DoctorAppointments from './pages/DoctorAppointments.jsx'
 import DoctorPatients from './pages/DoctorPatients.jsx'
@@ -80,7 +81,7 @@ function App() {
                     <Route path="patients-management" element={<AdminPatients />} />
                     <Route path="management" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-primary-500">Admin Management</h1><p className="text-[#808e9b] mt-4 font-bold">User and Platform operations.</p></div>} />
                     <Route path="transactions" element={<Payments />} />
-                    <Route path="settings" element={<div className="p-10 bg-white rounded-3xl border-2 border-slate-50"><h1 className="text-3xl font-black text-primary-500">Settings</h1><p className="text-[#808e9b] mt-4 font-bold">Admin settings and configuration.</p></div>} />
+                    <Route path="settings" element={<AdminSettings />} />
                     <Route path="payments" element={<PaymentHistory />} />
                     <Route path="payment/checkout" element={<PaymentCheckout />} />
                     <Route path="payment/success" element={<PaymentSuccess />} />
