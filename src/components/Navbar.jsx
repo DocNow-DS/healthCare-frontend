@@ -4,14 +4,30 @@ import {
   MagnifyingGlassIcon,
   UserCircleIcon
 } from '@heroicons/react/24/outline';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { getAuthData } from '../utils/auth';
 
 export default function Navbar() {
-  const [user, setUser] = useState({ username: 'User' });
+  const location = useLocation();
+  const [user, setUser] = useState(() => getAuthData().user || { username: 'User' });
+  const primaryRole = String(user?.roles?.[0] || user?.role || '').toUpperCase();
+  const notificationsHref = primaryRole === 'DOCTOR' || primaryRole === 'PATIENT' ? '/dashboard/notifications' : null;
+  const onNotificationsPage = location.pathname.startsWith('/dashboard/notifications');
 
   useEffect(() => {
+    const { user: authUser } = getAuthData();
+    if (authUser) {
+      setUser(authUser);
+      return;
+    }
     const storedUser = localStorage.getItem('auth_user');
-    if (storedUser) setUser(JSON.parse(storedUser));
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch {
+        setUser({ username: 'User' });
+      }
+    }
   }, []);
 
   return (
@@ -29,10 +45,21 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center space-x-6">
-          <button className="relative p-2 text-slate-400 hover:text-[#182C61] transition-colors">
-            <BellIcon className="h-6 w-6" />
-            <span className="absolute top-2 right-2 h-2.5 w-2.5 bg-[#eb2f06] border-2 border-white rounded-full"></span>
-          </button>
+          {notificationsHref ? (
+            <Link
+              to={notificationsHref}
+              aria-label="Notifications"
+              title="Notifications"
+              className={`relative p-2 rounded-xl transition-colors ${
+                onNotificationsPage ? 'text-[#182C61] bg-[#182C61]/5' : 'text-slate-400 hover:text-[#182C61] hover:bg-slate-50'
+              }`}
+            >
+              <BellIcon className="h-6 w-6" />
+              {!onNotificationsPage ? (
+                <span className="absolute top-2 right-2 h-2.5 w-2.5 bg-[#eb2f06] border-2 border-white rounded-full" aria-hidden />
+              ) : null}
+            </Link>
+          ) : null}
           
           <Link to="/dashboard" className="flex items-center space-x-3 group">
             <div className="text-right hidden sm:block">
