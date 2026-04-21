@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API } from '../config/api';
-import { CalendarDaysIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  CalendarDaysIcon,
+  ExclamationTriangleIcon,
+  MagnifyingGlassIcon,
+  ClockIcon,
+  CheckCircleIcon,
+  UsersIcon,
+} from '@heroicons/react/24/outline';
 
 const readAuthUser = () => {
   try {
@@ -22,6 +29,7 @@ export default function DoctorAppointments() {
   const [appointments, setAppointments] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [filterKey, setFilterKey] = useState('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
   const [nowMs, setNowMs] = useState(Date.now());
   const [sessionLinksByAppointment, setSessionLinksByAppointment] = useState({});
   const [generatingByAppointment, setGeneratingByAppointment] = useState({});
@@ -106,16 +114,42 @@ export default function DoctorAppointments() {
     [filteredAppointments],
   );
 
+  const visibleAppointments = useMemo(() => {
+    const q = String(searchTerm || '').trim().toLowerCase();
+    if (!q) return sortedFilteredAppointments;
+    return sortedFilteredAppointments.filter((a) => {
+      const patientName = String(a?.patientName || a?.patientFullName || a?.patientId || '').toLowerCase();
+      const consultationType = String(a?.consultationType || '').toLowerCase();
+      const status = String(a?.status || '').toLowerCase();
+      return patientName.includes(q) || consultationType.includes(q) || status.includes(q);
+    });
+  }, [sortedFilteredAppointments, searchTerm]);
+
   useEffect(() => {
-    if (sortedFilteredAppointments.length === 0) {
+    if (visibleAppointments.length === 0) {
       setExpandedId(null);
       return;
     }
-    const stillVisible = sortedFilteredAppointments.some((a) => a.id === expandedId);
+    const stillVisible = visibleAppointments.some((a) => a.id === expandedId);
     if (!stillVisible) {
-      setExpandedId(sortedFilteredAppointments[0].id);
+      setExpandedId(visibleAppointments[0].id);
     }
-  }, [sortedFilteredAppointments, expandedId]);
+  }, [visibleAppointments, expandedId]);
+
+  const stats = useMemo(() => {
+    const upcomingCount = appointments.filter((a) => {
+      const status = String(a?.status || '').toUpperCase();
+      const startMs = new Date(a?.startTime || 0).getTime();
+      return ['PENDING', 'ACCEPTED', 'RESCHEDULE_REQUESTED'].includes(status) && Number.isFinite(startMs) && startMs > nowMs;
+    }).length;
+    const completedCount = appointments.filter((a) => String(a?.status || '').toUpperCase() === 'COMPLETED').length;
+    return {
+      total: appointments.length,
+      upcoming: upcomingCount,
+      completed: completedCount,
+      showing: visibleAppointments.length,
+    };
+  }, [appointments, nowMs, visibleAppointments.length]);
 
   const nextAppointment = useMemo(() => {
     const now = nowMs;
@@ -270,91 +304,103 @@ export default function DoctorAppointments() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="max-w-sm">
-          <h1 className="text-3xl font-black text-[#182C61]">Appointments</h1>
-        </div>
-        <button
-          type="button"
-          onClick={loadAppointments}
-          className="px-4 py-2 bg-[#182C61] text-white rounded-xl font-black text-sm hover:bg-[#182C61]/85"
-        >
-          Refresh
-        </button>
-      </div>
-
-      {warning ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
-          <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5" />
-          <span className="text-sm font-semibold text-amber-800">{warning}</span>
-        </div>
-      ) : null}
-
-      {actionMessage ? (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-          <span className="text-sm font-semibold text-blue-800">{actionMessage}</span>
-        </div>
-      ) : null}
-
-      <div className="relative overflow-hidden rounded-3xl border border-[#182C61]/20 bg-gradient-to-br from-[#132b66] via-[#1c3d8c] to-[#365ab3] p-5 md:p-6 text-white shadow-xl shadow-[#182C61]/20">
-        <div className="absolute -top-16 -right-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-        <div className="absolute -bottom-20 -left-10 h-44 w-44 rounded-full bg-cyan-300/10 blur-2xl" />
-
-        <div className="relative z-10 flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.24em] font-black text-white/70">My next appointment</p>
-              <p className="text-sm text-white/85 font-semibold mt-1">Real-time doctor schedule countdown</p>
-            </div>
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 border border-white/30 px-3 py-1 text-[11px] font-black uppercase tracking-wider">
-              <span className={`h-2 w-2 rounded-full ${countdownUrgency === 'critical' ? 'bg-rose-300 animate-ping' : countdownUrgency === 'soon' ? 'bg-amber-300 animate-pulse' : 'bg-emerald-300'}`} />
-              Live
+    <div className="flex flex-col lg:flex-row gap-8 animate-in fade-in duration-700">
+      <div className="flex-1 space-y-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-black text-[#182C61] tracking-tight">Doctor Appointments</h1>
+            <p className="text-[#808e9b] mt-1 font-bold">Manage patient visits, approve bookings, and track your schedule.</p>
+          </div>
+          <div className="hidden md:flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm">
+            <CalendarDaysIcon className="h-5 w-5 text-[#182C61]" />
+            <span className="text-sm font-black text-[#182C61]">
+              {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
             </span>
           </div>
-
-          {nextAppointment && countdownParts ? (
-            <>
-              <div className="rounded-2xl bg-white/10 border border-white/20 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm md:text-base font-black tracking-tight">
-                  {formatPatientDisplayName(nextAppointment)}
-                </p>
-                <p className="text-xs md:text-sm font-semibold text-white/80">{formatAppointmentTimeShort(nextAppointment.startTime)}</p>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {[
-                  { key: 'd', value: countdownParts.days, label: 'Days' },
-                  { key: 'h', value: countdownParts.hours, label: 'Hours' },
-                  { key: 'm', value: countdownParts.minutes, label: 'Minutes' },
-                  { key: 's', value: countdownParts.seconds, label: 'Seconds' },
-                ].map((part) => (
-                  <div
-                    key={part.key}
-                    className={`rounded-xl border border-white/25 bg-white/15 px-3 py-2.5 text-center transition-all duration-300 ${
-                      part.key === 's' ? 'ring-1 ring-white/20 shadow-lg shadow-black/10' : ''
-                    }`}
-                  >
-                    <p className={`text-2xl font-black leading-none tabular-nums ${part.key === 's' ? 'animate-pulse' : ''}`}>
-                      {String(part.value).padStart(2, '0')}
-                    </p>
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-white/75 mt-1">{part.label}</p>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="rounded-2xl bg-white/10 border border-white/20 p-4">
-              <p className="text-xl font-black tracking-tight">No upcoming appointments</p>
-              <p className="text-sm text-white/75 mt-1">New bookings will appear here automatically.</p>
-            </div>
-          )}
         </div>
-      </div>
 
-      <div className="bg-white border-2 border-slate-50 rounded-2xl p-5">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {[
+        <div className="relative group">
+          <MagnifyingGlassIcon className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[#808e9b] group-focus-within:text-[#182C61] transition-colors" />
+          <input
+            type="text"
+            placeholder="Search by patient, status, or consultation type"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-14 pr-6 py-4 bg-white border-2 border-transparent rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] font-bold text-sm text-[#1e272e] shadow-xl shadow-[#182C61]/5 transition-all"
+          />
+        </div>
+
+        {warning ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-2">
+            <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5" />
+            <span className="text-sm font-semibold text-amber-800">{warning}</span>
+          </div>
+        ) : null}
+
+        {actionMessage ? (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+            <span className="text-sm font-semibold text-blue-800">{actionMessage}</span>
+          </div>
+        ) : null}
+
+        <div className="relative overflow-hidden rounded-[2rem] border border-[#182C61]/20 bg-gradient-to-br from-[#132b66] via-[#1c3d8c] to-[#365ab3] p-5 md:p-6 text-white shadow-xl shadow-[#182C61]/20">
+          <div className="absolute -top-16 -right-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+          <div className="absolute -bottom-20 -left-10 h-44 w-44 rounded-full bg-cyan-300/10 blur-2xl" />
+
+          <div className="relative z-10 flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.24em] font-black text-white/70">My next appointment</p>
+                <p className="text-sm text-white/85 font-semibold mt-1">Real-time doctor schedule countdown</p>
+              </div>
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 border border-white/30 px-3 py-1 text-[11px] font-black uppercase tracking-wider">
+                <span className={`h-2 w-2 rounded-full ${countdownUrgency === 'critical' ? 'bg-rose-300 animate-ping' : countdownUrgency === 'soon' ? 'bg-amber-300 animate-pulse' : 'bg-emerald-300'}`} />
+                Live
+              </span>
+            </div>
+
+            {nextAppointment && countdownParts ? (
+              <>
+                <div className="rounded-2xl bg-white/10 border border-white/20 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm md:text-base font-black tracking-tight">
+                    {formatPatientDisplayName(nextAppointment)}
+                  </p>
+                  <p className="text-xs md:text-sm font-semibold text-white/80">{formatAppointmentTimeShort(nextAppointment.startTime)}</p>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { key: 'd', value: countdownParts.days, label: 'Days' },
+                    { key: 'h', value: countdownParts.hours, label: 'Hours' },
+                    { key: 'm', value: countdownParts.minutes, label: 'Minutes' },
+                    { key: 's', value: countdownParts.seconds, label: 'Seconds' },
+                  ].map((part) => (
+                    <div
+                      key={part.key}
+                      className={`rounded-xl border border-white/25 bg-white/15 px-3 py-2.5 text-center transition-all duration-300 ${
+                        part.key === 's' ? 'ring-1 ring-white/20 shadow-lg shadow-black/10' : ''
+                      }`}
+                    >
+                      <p className={`text-2xl font-black leading-none tabular-nums ${part.key === 's' ? 'animate-pulse' : ''}`}>
+                        {String(part.value).padStart(2, '0')}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-white/75 mt-1">{part.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-2xl bg-white/10 border border-white/20 p-4">
+                <p className="text-xl font-black tracking-tight">No upcoming appointments</p>
+                <p className="text-sm text-white/75 mt-1">New bookings will appear here automatically.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white border-2 border-slate-50 rounded-[2rem] p-5">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {[
             {
               key: 'ALL',
               label: 'All',
@@ -421,13 +467,13 @@ export default function DoctorAppointments() {
           ))}
         </div>
 
-        {loading ? (
-          <p className="text-sm font-bold text-[#808e9b]">Loading appointments...</p>
-        ) : sortedFilteredAppointments.length === 0 ? (
-          <p className="text-sm font-bold text-[#808e9b]">No appointments found.</p>
+          {loading ? (
+            <p className="text-sm font-bold text-[#808e9b]">Loading appointments...</p>
+          ) : visibleAppointments.length === 0 ? (
+            <p className="text-sm font-bold text-[#808e9b]">No appointments found.</p>
         ) : (
           <div className="space-y-3">
-            {sortedFilteredAppointments.map((a) => (
+              {visibleAppointments.map((a) => (
               <div
                 key={a.id}
                 role="button"
@@ -572,8 +618,52 @@ export default function DoctorAppointments() {
                 ) : null}
               </div>
             ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="w-full lg:w-[340px] space-y-6">
+        <div className="bg-white rounded-[2rem] border-2 border-slate-50 p-5 shadow-xl shadow-[#182C61]/5">
+          <h3 className="text-sm font-black text-[#182C61] uppercase tracking-widest mb-4">Overview</h3>
+          <div className="space-y-3">
+            <div className="rounded-2xl bg-[#182C61]/5 p-4 border border-[#182C61]/10 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#808e9b]">Total</p>
+                <p className="text-xl font-black text-[#182C61]">{stats.total}</p>
+              </div>
+              <UsersIcon className="h-6 w-6 text-[#182C61]" />
+            </div>
+            <div className="rounded-2xl bg-emerald-50 p-4 border border-emerald-100 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Upcoming</p>
+                <p className="text-xl font-black text-emerald-700">{stats.upcoming}</p>
+              </div>
+              <ClockIcon className="h-6 w-6 text-emerald-700" />
+            </div>
+            <div className="rounded-2xl bg-sky-50 p-4 border border-sky-100 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">Completed</p>
+                <p className="text-xl font-black text-sky-700">{stats.completed}</p>
+              </div>
+              <CheckCircleIcon className="h-6 w-6 text-sky-700" />
+            </div>
           </div>
-        )}
+        </div>
+
+        <button
+          type="button"
+          onClick={loadAppointments}
+          className="w-full px-4 py-3 bg-[#182C61] text-white rounded-2xl font-black text-sm hover:bg-[#182C61]/85"
+        >
+          Refresh Appointments
+        </button>
+
+        <div className="bg-white rounded-[2rem] border border-slate-100 p-5">
+          <p className="text-[10px] font-black uppercase tracking-widest text-[#808e9b]">Showing</p>
+          <p className="text-2xl font-black text-[#182C61] mt-1">{stats.showing}</p>
+          <p className="text-xs font-semibold text-[#808e9b] mt-1">appointments for current filters and search.</p>
+        </div>
       </div>
     </div>
   );

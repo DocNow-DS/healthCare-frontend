@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API } from '../config/api';
 import {
   CalendarDaysIcon,
+  ClockIcon,
+  MagnifyingGlassIcon,
+  CheckCircleIcon,
   ExclamationTriangleIcon,
   XCircleIcon,
   TrashIcon,
@@ -210,6 +213,7 @@ export default function PatientAppointments() {
   const [warning, setWarning] = useState('');
   const [appointments, setAppointments] = useState([]);
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState(null);
   const [userPickedId, setUserPickedId] = useState(null);
   const userPickedIdRef = useRef(userPickedId);
@@ -317,10 +321,36 @@ export default function PatientAppointments() {
     if (statusFilter === 'ALL') return appointments;
     return appointments.filter((a) => String(a?.status || '').toUpperCase() === statusFilter);
   }, [appointments, statusFilter]);
+  const visibleAppointments = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return filteredAppointments;
+    return filteredAppointments.filter((a) => {
+      const doctorName = String(a?.doctorName || a?.doctorFullName || a?.doctor || '').toLowerCase();
+      const consultType = String(a?.consultationType || '').toLowerCase();
+      const status = String(a?.status || '').toLowerCase();
+      return doctorName.includes(q) || consultType.includes(q) || status.includes(q);
+    });
+  }, [filteredAppointments, searchTerm]);
+
   const expandedAppointment = useMemo(
-    () => filteredAppointments.find((a) => a.id === expandedId) || null,
-    [filteredAppointments, expandedId],
+    () => visibleAppointments.find((a) => a.id === expandedId) || null,
+    [visibleAppointments, expandedId],
   );
+
+  const stats = useMemo(() => {
+    const now = Date.now();
+    const upcoming = appointments.filter((a) => {
+      const t = new Date(a?.startTime || a?.createdAt || 0).getTime();
+      return Number.isFinite(t) && t > now;
+    }).length;
+    const completed = appointments.filter((a) => String(a?.status || '').toUpperCase() === 'COMPLETED').length;
+    return {
+      total: appointments.length,
+      upcoming,
+      completed,
+      filtered: visibleAppointments.length,
+    };
+  }, [appointments, visibleAppointments.length]);
 
   const isCancelableStatus = (status) => {
     const s = String(status || '').toUpperCase();
@@ -372,28 +402,38 @@ export default function PatientAppointments() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="max-w-lg">
-          <h1 className="text-3xl font-black text-[#182C61]">My appointments</h1>
-        </div>
-        <button
-          type="button"
-          onClick={loadAppointments}
-          className="px-4 py-2 bg-gradient-to-r from-[#182C61] to-[#27408f] text-white rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#182C61]/30 transition-all"
-        >
-          Refresh 🔄
-        </button>
-      </div>
-
-      {expandedAppointment && (
-        <div className="bg-gradient-to-r from-[#182C61] via-[#243b78] to-[#304e9a] rounded-3xl border-2 border-[#182C61]/10 shadow-2xl p-6 md:p-8 text-white space-y-4">
-          <div className="space-y-1">
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-white/60">Selected appointment</p>
-            <h2 className="text-xl font-black tracking-tight">Progress overview 🚀</h2>
+    <div className="flex flex-col lg:flex-row gap-8 animate-in fade-in duration-700">
+      <div className="flex-1 space-y-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-black text-[#182C61] tracking-tight">Manage Appointments</h1>
+            <p className="text-[#808e9b] mt-1 font-bold">Track your consultations, check status, and manage changes quickly.</p>
           </div>
+          <div className="hidden md:flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm">
+            <CalendarDaysIcon className="h-5 w-5 text-[#182C61]" />
+            <span className="text-sm font-black text-[#182C61]">
+              {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            </span>
+          </div>
+        </div>
 
-          <div className="pt-2">
+        <div className="relative group">
+          <MagnifyingGlassIcon className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[#808e9b] group-focus-within:text-[#182C61] transition-colors" />
+          <input
+            type="text"
+            placeholder="Search by doctor, status, or consultation type"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-14 pr-6 py-4 bg-white border-2 border-transparent rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] font-bold text-sm text-[#1e272e] shadow-xl shadow-[#182C61]/5 transition-all"
+          />
+        </div>
+
+        {expandedAppointment && (
+          <div className="bg-gradient-to-r from-[#182C61] via-[#243b78] to-[#304e9a] rounded-[2rem] border-2 border-[#182C61]/10 shadow-2xl p-6 md:p-8 text-white space-y-4">
+            <div className="space-y-1">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-white/60">Selected appointment</p>
+              <h2 className="text-xl font-black tracking-tight">Progress overview</h2>
+            </div>
             <AnimatedProgressBar
               targetPercent={
                 typeof expandedAppointment.progressPercent === 'number'
@@ -403,151 +443,197 @@ export default function PatientAppointments() {
               status={expandedAppointment.status}
             />
           </div>
-        </div>
-      )}
+        )}
 
-      {warning ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
-          <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
-          <span className="text-sm font-semibold text-amber-800">{warning}</span>
-        </div>
-      ) : null}
+        {warning ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+            <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <span className="text-sm font-semibold text-amber-800">{warning}</span>
+          </div>
+        ) : null}
 
-      <div className="bg-white border-2 border-slate-100 rounded-2xl p-5 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center gap-2 bg-slate-50 rounded-2xl p-2">
-          {FILTER_OPTIONS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => setStatusFilter(item.key)}
-              className={`px-3 py-1.5 rounded-full border text-xs font-black uppercase tracking-wider transition-all ${
-                statusFilter === item.key
-                  ? item.active
-                  : item.idle
-              }`}
-            >
-              <span className="mr-1">{item.emoji}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        {loading ? (
-          <p className="text-sm font-bold text-[#808e9b]">Loading appointments...</p>
-        ) : filteredAppointments.length === 0 ? (
-          <p className="text-sm font-bold text-[#808e9b]">No appointments yet. Book a specialist from the dashboard.</p>
-        ) : (
-          <div className="space-y-3">
-            {filteredAppointments.map((a) => {
-              const statusMeta = getStatusMeta(a.status);
-              return (
-              <div
-                key={a.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  setUserPickedId(a.id);
-                  setExpandedId(a.id);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    setUserPickedId(a.id);
-                    setExpandedId(a.id);
-                  }
-                }}
-                className={`rounded-2xl border transition-all duration-200 cursor-pointer ${
-                  expandedId === a.id
-                    ? 'border-[#182C61]/25 bg-gradient-to-r from-white to-[#f9fbff] shadow-md'
-                    : 'border-slate-200/80 bg-white hover:border-[#182C61]/20 hover:shadow-md hover:-translate-y-0.5'
+        <div className="bg-white border-2 border-slate-100 rounded-[2rem] p-5 shadow-sm">
+          <div className="mb-5 flex flex-wrap items-center gap-2 bg-slate-50 rounded-2xl p-2">
+            {FILTER_OPTIONS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setStatusFilter(item.key)}
+                className={`px-3 py-2 rounded-full border text-xs font-black uppercase tracking-wider transition-all ${
+                  statusFilter === item.key ? item.active : item.idle
                 }`}
               >
-                <div className="p-4 md:p-5 flex items-center justify-between gap-3">
-                  <div className="min-w-0 flex items-center gap-3">
-                    <div className={`h-10 w-10 rounded-full bg-gradient-to-br ${statusMeta.avatar} flex items-center justify-center text-xs font-black tracking-wide shrink-0`}>
-                      {getDoctorInitials(a.doctorName)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-base font-black text-[#182C61] truncate">
-                        {withDoctorPrefix(a.doctorName || a.doctorFullName || a.doctor || 'Doctor')}
-                      </p>
-                      <p className="text-xs font-semibold text-[#808e9b] truncate">
-                        {formatWhenShort(a.startTime)}
-                      </p>
-                    </div>
-                  </div>
+                <span className="mr-1">{item.emoji}</span>
+                {item.label}
+              </button>
+            ))}
+          </div>
 
-                  <div className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold ${statusMeta.badge}`}>
-                    <span className={`h-2 w-2 rounded-full ${statusMeta.dot} ${String(a?.status || '').toUpperCase() === 'PENDING' ? 'animate-pulse' : ''}`} />
-                    {statusMeta.label}
-                  </div>
-                </div>
-
-                {expandedId === a.id ? (
-                  <div className="border-t border-slate-100 px-4 md:px-5 pb-4 md:pb-5 pt-4">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                      <div className="lg:col-span-2 rounded-xl border border-slate-100 bg-slate-50/60 p-4 space-y-2">
-                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#808e9b]">
-                          Appointment details
-                        </p>
-                        <p className="text-sm font-black text-[#182C61]">
-                          {a.consultationType || 'Consultation'}
-                        </p>
-                        <p className="text-xs font-semibold text-[#4b5563]">
-                          Start: {formatWhen(a.startTime)}
-                        </p>
-                        <p className="text-xs font-semibold text-[#4b5563]">
-                          End: {a.endTime ? formatWhen(a.endTime) : '—'}
-                        </p>
-                        <p className="text-xs text-[#6b7280]">
-                          {a.notes && String(a.notes).trim() ? a.notes : 'No notes.'}
-                        </p>
+          {loading ? (
+            <div className="py-10 text-center bg-slate-50 rounded-[1.5rem] border border-slate-100">
+              <p className="text-sm font-bold text-[#808e9b]">Loading appointments...</p>
+            </div>
+          ) : visibleAppointments.length === 0 ? (
+            <div className="py-10 text-center bg-slate-50 rounded-[1.5rem] border border-slate-100">
+              <p className="text-sm font-bold text-[#808e9b]">No appointments found. Try a different filter or search.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {visibleAppointments.map((a) => {
+                const statusMeta = getStatusMeta(a.status);
+                return (
+                  <div
+                    key={a.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setUserPickedId(a.id);
+                      setExpandedId(a.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        setUserPickedId(a.id);
+                        setExpandedId(a.id);
+                      }
+                    }}
+                    className={`rounded-[1.5rem] border transition-all duration-200 cursor-pointer ${
+                      expandedId === a.id
+                        ? 'border-[#182C61]/25 bg-gradient-to-r from-white to-[#f9fbff] shadow-md'
+                        : 'border-slate-100 bg-white hover:border-[#182C61]/20 hover:shadow-md hover:-translate-y-0.5'
+                    }`}
+                  >
+                    <div className="p-4 md:p-5 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex items-center gap-3">
+                        <div className={`h-11 w-11 rounded-2xl bg-gradient-to-br ${statusMeta.avatar} flex items-center justify-center text-xs font-black tracking-wide shrink-0`}>
+                          {getDoctorInitials(a.doctorName)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-base font-black text-[#182C61] truncate">
+                            {withDoctorPrefix(a.doctorName || a.doctorFullName || a.doctor || 'Doctor')}
+                          </p>
+                          <p className="text-xs font-semibold text-[#808e9b] truncate">
+                            {formatWhenShort(a.startTime)}
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="rounded-xl border border-slate-100 bg-white p-4 space-y-3">
-                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#808e9b]">
-                          Actions
-                        </p>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCancelAppointment(a);
-                          }}
-                          disabled={actionLoading || !isCancelableStatus(a.status)}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 disabled:hover:bg-emerald-50 transition-colors"
-                          title="Cancel appointment"
-                        >
-                          <XCircleIcon className="h-4 w-4" />
-                          <span className="text-xs font-black uppercase tracking-wide">Cancel</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteAppointment(a);
-                          }}
-                          disabled={actionLoading}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 disabled:opacity-50 disabled:hover:bg-rose-50 transition-colors"
-                          title="Delete appointment"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                          <span className="text-xs font-black uppercase tracking-wide">Delete</span>
-                        </button>
+                      <div className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold ${statusMeta.badge}`}>
+                        <span className={`h-2 w-2 rounded-full ${statusMeta.dot} ${String(a?.status || '').toUpperCase() === 'PENDING' ? 'animate-pulse' : ''}`} />
+                        {statusMeta.label}
                       </div>
                     </div>
 
-                    {actionError ? (
-                      <div className="mt-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-sm font-semibold">
-                        {actionError}
+                    {expandedId === a.id ? (
+                      <div className="border-t border-slate-100 px-4 md:px-5 pb-4 md:pb-5 pt-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                          <div className="lg:col-span-2 rounded-2xl border border-slate-100 bg-slate-50/60 p-4 space-y-2">
+                            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#808e9b]">
+                              Appointment details
+                            </p>
+                            <p className="text-sm font-black text-[#182C61]">
+                              {a.consultationType || 'Consultation'}
+                            </p>
+                            <p className="text-xs font-semibold text-[#4b5563]">
+                              Start: {formatWhen(a.startTime)}
+                            </p>
+                            <p className="text-xs font-semibold text-[#4b5563]">
+                              End: {a.endTime ? formatWhen(a.endTime) : '—'}
+                            </p>
+                            <p className="text-xs text-[#6b7280]">
+                              {a.notes && String(a.notes).trim() ? a.notes : 'No notes.'}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-100 bg-white p-4 space-y-3">
+                            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#808e9b]">
+                              Actions
+                            </p>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancelAppointment(a);
+                              }}
+                              disabled={actionLoading || !isCancelableStatus(a.status)}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 disabled:hover:bg-emerald-50 transition-colors"
+                              title="Cancel appointment"
+                            >
+                              <XCircleIcon className="h-4 w-4" />
+                              <span className="text-xs font-black uppercase tracking-wide">Cancel</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteAppointment(a);
+                              }}
+                              disabled={actionLoading}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 disabled:opacity-50 disabled:hover:bg-rose-50 transition-colors"
+                              title="Delete appointment"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                              <span className="text-xs font-black uppercase tracking-wide">Delete</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {actionError ? (
+                          <div className="mt-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-sm font-semibold">
+                            {actionError}
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
-                ) : null}
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="w-full lg:w-[340px] space-y-6">
+        <div className="bg-white rounded-[2rem] border-2 border-slate-50 p-5 shadow-xl shadow-[#182C61]/5">
+          <h3 className="text-sm font-black text-[#182C61] uppercase tracking-widest mb-4">Overview</h3>
+          <div className="space-y-3">
+            <div className="rounded-2xl bg-[#182C61]/5 p-4 border border-[#182C61]/10 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#808e9b]">Total</p>
+                <p className="text-xl font-black text-[#182C61]">{stats.total}</p>
               </div>
-            )})}
+              <CalendarDaysIcon className="h-6 w-6 text-[#182C61]" />
+            </div>
+            <div className="rounded-2xl bg-emerald-50 p-4 border border-emerald-100 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Upcoming</p>
+                <p className="text-xl font-black text-emerald-700">{stats.upcoming}</p>
+              </div>
+              <ClockIcon className="h-6 w-6 text-emerald-700" />
+            </div>
+            <div className="rounded-2xl bg-sky-50 p-4 border border-sky-100 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">Completed</p>
+                <p className="text-xl font-black text-sky-700">{stats.completed}</p>
+              </div>
+              <CheckCircleIcon className="h-6 w-6 text-sky-700" />
+            </div>
           </div>
-        )}
+        </div>
+
+        <button
+          type="button"
+          onClick={loadAppointments}
+          className="w-full px-4 py-3 bg-[#182C61] text-white rounded-2xl font-black text-sm hover:shadow-lg hover:shadow-[#182C61]/30 transition-all"
+        >
+          Refresh Appointments
+        </button>
+
+        <div className="bg-white rounded-[2rem] border border-slate-100 p-5">
+          <p className="text-[10px] font-black uppercase tracking-widest text-[#808e9b]">Showing</p>
+          <p className="text-2xl font-black text-[#182C61] mt-1">{stats.filtered}</p>
+          <p className="text-xs font-semibold text-[#808e9b] mt-1">appointments for current filters and search.</p>
+        </div>
       </div>
     </div>
   );

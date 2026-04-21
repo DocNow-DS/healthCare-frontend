@@ -97,6 +97,18 @@ const withDoctorPrefix = (name) => {
   return `Dr. ${cleaned}`;
 };
 
+const getConsultationFeeLkr = (doc) => {
+  const fee = Number(doc?.consultationFee);
+  if (Number.isFinite(fee) && fee > 0) return fee;
+
+  // Deterministic fallback fee in LKR: clean hundreds, 1100-4900
+  const seed = String(
+    doc?.id || doc?.userId || doc?.doctorId || doc?.username || doc?.name || 'doctor',
+  );
+  const hash = Math.abs(seed.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0));
+  return 1100 + (hash % 39) * 100;
+};
+
 const parseTimeToMinutes = (raw) => {
   if (raw == null) return null;
   if (typeof raw === 'object') {
@@ -529,9 +541,9 @@ export default function DoctorSearch() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-black text-[#182C61] tracking-tight">
-              Welcome, Audrey!
+              Find Your Doctor
             </h1>
-            <p className="text-[#808e9b] mt-1 font-bold">Hello there! Welcome to our medical app. How can we assist you today?</p>
+            <p className="text-[#808e9b] mt-1 font-bold">Search specialists, compare profiles, and book your appointment in minutes.</p>
           </div>
           <div className="hidden md:flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm">
             <CalendarIcon className="h-5 w-5 text-[#182C61]" />
@@ -645,7 +657,7 @@ export default function DoctorSearch() {
                     </div>
 
                     <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                      <p className="text-lg font-black text-[#182C61]">${doctor.consultationFee || 36}<span className="text-[10px] text-[#808e9b]">/h</span></p>
+                      <p className="text-lg font-black text-[#182C61]">LKR {getConsultationFeeLkr(doctor)}<span className="text-[10px] text-[#808e9b]">/h</span></p>
                       <div className="flex items-center gap-1 bg-[#eb2f06]/5 px-2 py-1 rounded-lg">
                         <StarIcon className="h-3 w-3 text-[#eb2f06] fill-[#eb2f06]" />
                         <span className="text-[10px] font-black text-[#eb2f06]">{doctor.rating || '4.8'}</span>
@@ -722,7 +734,7 @@ export default function DoctorSearch() {
                 <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-black text-[#182C61] leading-tight truncate">{getDoctorName(effectiveSelectedDoctor)}</h3>
                   <p className="text-[10px] font-bold text-[#808e9b] uppercase tracking-widest mb-2">{getSpecialty(effectiveSelectedDoctor)}</p>
-                  <p className="text-xl font-black text-[#eb2f06]">${effectiveSelectedDoctor.consultationFee || 36}<span className="text-xs text-[#808e9b]">/h</span></p>
+                  <p className="text-xl font-black text-[#eb2f06]">LKR {getConsultationFeeLkr(effectiveSelectedDoctor)}<span className="text-xs text-[#808e9b]">/h</span></p>
                 </div>
                 <button className="p-3 bg-[#182C61] text-white rounded-2xl shadow-xl shadow-[#182C61]/20">
                     <VideoCameraIcon className="h-5 w-5" />
