@@ -802,61 +802,90 @@ export default function DoctorSearch() {
       {/* Booking Modal */}
       {isBookingModalOpen && bookingDoctor && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[#182C61]/40 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 shadow-2xl max-w-sm w-full p-8 relative animate-in zoom-in-95 duration-300">
+          <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 shadow-2xl max-w-4xl w-full overflow-hidden relative animate-in zoom-in-95 duration-300 flex flex-col md:flex-row">
+            
+            {/* Close Button */}
             <button
               type="button"
               onClick={() => setIsBookingModalOpen(false)}
-              className="absolute top-6 right-6 p-2 rounded-xl text-[#808e9b] hover:bg-slate-50 transition-colors"
+              className="absolute top-6 right-6 z-10 p-2 rounded-xl text-[#808e9b] hover:bg-slate-50 transition-colors"
             >
               <XMarkIcon className="h-5 w-5" />
             </button>
 
-            <div className="mb-6">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#eb2f06]/5 text-[#eb2f06] text-[9px] font-black uppercase tracking-widest mb-3">
-                    <CalendarIcon className="h-3 w-3" />
-                    Appointment Details
+            {/* Left Panel: Doctor Info & Date */}
+            <div className="w-full md:w-[350px] bg-slate-50 p-8 border-r border-slate-100 space-y-8">
+                <div className="space-y-4">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#eb2f06]/5 text-[#eb2f06] text-[9px] font-black uppercase tracking-widest">
+                        <CalendarIcon className="h-3 w-3" />
+                        Booking details
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-4 mb-4">
+                            <img 
+                                src={getDoctorImage(bookingDoctor)} 
+                                alt={getDoctorName(bookingDoctor)}
+                                className="h-16 w-16 rounded-2xl object-cover ring-4 ring-white shadow-lg"
+                            />
+                            <div>
+                                <h2 className="text-xl font-black text-[#182C61] leading-tight">{getDoctorName(bookingDoctor)}</h2>
+                                <p className="text-[10px] text-[#808e9b] font-bold uppercase tracking-widest">{getSpecialty(bookingDoctor)}</p>
+                            </div>
+                        </div>
+                        <p className="text-[11px] text-[#1e272e] leading-relaxed font-medium">
+                            Please select your preferred date and time for the consultation with {getDoctorName(bookingDoctor)}.
+                        </p>
+                    </div>
                 </div>
-                <h2 className="text-xl font-black text-[#182C61]">Secure your slot</h2>
-                <p className="text-[10px] text-[#808e9b] font-bold mt-1 uppercase tracking-widest">
-                    {getDoctorName(bookingDoctor)} • {getSpecialty(bookingDoctor)}
-                </p>
+
+                <div className="space-y-3 pt-6 border-t border-slate-200">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">1. Select Date</label>
+                    <input
+                        type="date"
+                        required
+                        min={new Date().toISOString().slice(0, 10)}
+                        value={bookForm.date}
+                        onChange={(e) => setBookForm((f) => ({ ...f, date: e.target.value, time: '' }))}
+                        className="w-full px-4 py-4 rounded-2xl bg-white border-2 border-transparent shadow-sm shadow-[#182C61]/5 font-black text-xs text-[#182C61] focus:ring-4 focus:ring-[#182C61]/5 focus:border-[#182C61] transition-all"
+                    />
+                </div>
+
+                <div className="hidden md:block pt-8">
+                     <p className="text-[9px] font-bold text-[#808e9b] leading-relaxed">
+                        Need help? Contact our support team for assistance with your booking.
+                     </p>
+                </div>
             </div>
 
-            <form onSubmit={async (e) => {
-                await submitBooking(e);
-            }} className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">Date Selection</label>
-                <input
-                  type="date"
-                  required
-                  min={new Date().toISOString().slice(0, 10)}
-                  value={bookForm.date}
-                  onChange={(e) => setBookForm((f) => ({ ...f, date: e.target.value, time: '' }))}
-                  className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-0 font-black text-xs text-[#182C61] focus:ring-2 focus:ring-[#182C61]/10"
-                />
-              </div>
-
+            {/* Right Panel: Time & Remaining Form */}
+            <form 
+                onSubmit={async (e) => { await submitBooking(e); }} 
+                className="flex-1 p-8 md:p-10 space-y-6 overflow-y-auto max-h-[90vh]"
+            >
               <div className="space-y-4">
-                <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">Available Time Slots</label>
+                <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">2. Pick a time slot</label>
                 {!bookForm.date ? (
-                    <div className="p-8 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
-                        <p className="text-[10px] font-bold text-[#808e9b]">Please select a date first</p>
+                    <div className="py-12 px-8 text-center bg-white rounded-3xl border-2 border-dashed border-slate-100">
+                         <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                             <ClockIcon className="h-6 w-6 text-slate-200" />
+                         </div>
+                        <p className="text-[11px] font-bold text-[#808e9b]">Select a date on the left to see availability</p>
                     </div>
                 ) : loadingSlots ? (
-                    <div className="flex items-center justify-center py-8">
-                        <div className="animate-spin h-5 w-5 border-2 border-[#182C61] border-t-transparent rounded-full" />
+                    <div className="flex flex-col items-center justify-center py-12 gap-3">
+                        <div className="animate-spin h-6 w-6 border-2 border-[#182C61] border-t-transparent rounded-full" />
+                        <p className="text-[10px] font-black text-[#182C61] uppercase tracking-widest">Checking availability...</p>
                     </div>
                 ) : slotOptions.length === 0 ? (
-                    <div className="p-8 text-center bg-amber-50 rounded-2xl border border-amber-100">
-                        <p className="text-[10px] font-bold text-amber-700">No availability for this date</p>
+                    <div className="py-12 px-8 text-center bg-amber-50 rounded-3xl border border-amber-100">
+                        <p className="text-[11px] font-black text-amber-700 uppercase tracking-widest">No slots today</p>
                     </div>
                 ) : (
-                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 scrollbar-hide">
+                    <div className="space-y-6">
                         {[
-                            { name: 'Morning', hours: [8, 12] },
-                            { name: 'Afternoon', hours: [12, 17] },
-                            { name: 'Evening', hours: [17, 21] }
+                            { name: 'Morning', hours: [8, 12], icon: '🌅' },
+                            { name: 'Afternoon', hours: [12, 17], icon: '☀️' },
+                            { name: 'Evening', hours: [17, 21], icon: '🌙' }
                         ].map(period => {
                             const periodSlots = slotOptions.filter(s => {
                                 const hour = parseInt(s.value.split(':')[0]);
@@ -866,9 +895,12 @@ export default function DoctorSearch() {
                             if (periodSlots.length === 0) return null;
 
                             return (
-                                <div key={period.name} className="space-y-2">
-                                    <h4 className="text-[8px] font-black uppercase tracking-widest text-[#182C61]/50">{period.name}</h4>
-                                    <div className="grid grid-cols-4 gap-2">
+                                <div key={period.name} className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs">{period.icon}</span>
+                                        <h4 className="text-[9px] font-black uppercase tracking-widest text-[#182C61]">{period.name}</h4>
+                                    </div>
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                                         {periodSlots.map(slot => {
                                             const isSelected = bookForm.time === slot.value;
                                             return (
@@ -877,12 +909,12 @@ export default function DoctorSearch() {
                                                     type="button"
                                                     disabled={slot.disabled}
                                                     onClick={() => setBookForm(f => ({ ...f, time: slot.value }))}
-                                                    className={`py-2 rounded-xl text-[9px] font-black transition-all border ${
+                                                    className={`py-3 rounded-2xl text-[10px] font-black transition-all border ${
                                                         slot.disabled
                                                         ? 'bg-slate-50 border-transparent text-slate-300 cursor-not-allowed line-through'
                                                         : isSelected
-                                                        ? 'bg-[#182C61] border-[#182C61] text-white shadow-lg shadow-[#182C61]/20'
-                                                        : 'bg-white border-slate-100 text-[#182C61] hover:border-[#182C61]/20 hover:bg-slate-50'
+                                                        ? 'bg-[#182C61] border-[#182C61] text-white shadow-xl shadow-[#182C61]/20 transform scale-105'
+                                                        : 'bg-white border-slate-100 text-[#182C61] hover:border-[#182C61]/30 hover:shadow-lg hover:shadow-[#182C61]/5'
                                                     }`}
                                                 >
                                                     {slot.label}
@@ -897,40 +929,42 @@ export default function DoctorSearch() {
                 )}
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">Consultation Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                    {['ONLINE', 'IN_PERSON'].map(type => (
-                        <button
-                            key={type}
-                            type="button"
-                            onClick={() => setBookForm(f => ({ ...f, consultationType: type }))}
-                            className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                                bookForm.consultationType === type 
-                                ? 'bg-[#182C61] text-white shadow-lg shadow-[#182C61]/10' 
-                                : 'bg-slate-50 text-[#808e9b] hover:bg-slate-100'
-                            }`}
-                        >
-                            {type.replace('_', ' ')}
-                        </button>
-                    ))}
-                </div>
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                  <div className="space-y-3">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">3. Visit Type</label>
+                    <div className="flex gap-2">
+                        {['ONLINE', 'IN_PERSON'].map(type => (
+                            <button
+                                key={type}
+                                type="button"
+                                onClick={() => setBookForm(f => ({ ...f, consultationType: type }))}
+                                className={`flex-1 py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${
+                                    bookForm.consultationType === type 
+                                    ? 'bg-[#eb2f06] text-white shadow-xl shadow-[#eb2f06]/10' 
+                                    : 'bg-slate-50 text-[#808e9b] hover:bg-slate-100'
+                                }`}
+                            >
+                                {type.replace('_', ' ')}
+                            </button>
+                        ))}
+                    </div>
+                  </div>
 
-              <div className="space-y-2">
-                <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">Notes (Optional)</label>
-                <textarea
-                  value={bookForm.notes}
-                  onChange={(e) => setBookForm((f) => ({ ...f, notes: e.target.value }))}
-                  rows={2}
-                  className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-0 font-bold text-xs text-[#1e272e] focus:ring-2 focus:ring-[#182C61]/10"
-                  placeholder="Reason for visit..."
-                />
+                  <div className="space-y-3">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#808e9b]">4. Notes</label>
+                    <textarea
+                      value={bookForm.notes}
+                      onChange={(e) => setBookForm((f) => ({ ...f, notes: e.target.value }))}
+                      rows={1}
+                      className="w-full px-4 py-4 rounded-2xl bg-slate-50 border-0 font-bold text-xs text-[#1e272e] focus:ring-4 focus:ring-[#182C61]/5 min-h-[52px]"
+                      placeholder="Symptoms..."
+                    />
+                  </div>
               </div>
 
               {bookMessage && (
-                <div className={`p-3 rounded-xl text-[10px] font-bold ${bookMessage.type === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                    {bookMessage.type === 'ok' && <CheckCircleIcon className="inline h-3 w-3 mr-1" />}
+                <div className={`p-4 rounded-[1.5rem] text-[11px] font-bold flex items-center gap-3 ${bookMessage.type === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                    {bookMessage.type === 'ok' ? <CheckCircleIcon className="h-5 w-5" /> : <ExclamationTriangleIcon className="h-4 w-4" />}
                     {bookMessage.text}
                 </div>
               )}
@@ -938,9 +972,9 @@ export default function DoctorSearch() {
               <button
                 type="submit"
                 disabled={booking || !bookForm.date || !bookForm.time || loadingSlots}
-                className="w-full py-4 bg-[#eb2f06] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#eb2f06]/20 hover:bg-[#182C61] transition-all transform active:scale-95 disabled:opacity-50"
+                className="w-full py-5 bg-[#182C61] text-white rounded-[2rem] text-xs font-black uppercase tracking-widest shadow-2xl shadow-[#182C61]/20 hover:bg-[#eb2f06] transition-all transform active:scale-[0.98] disabled:opacity-50 mt-4"
               >
-                {booking ? 'Confiming...' : 'Confirm Appointment'}
+                {booking ? 'Confiming appointment...' : 'Confirm Appointment'}
               </button>
             </form>
           </div>
