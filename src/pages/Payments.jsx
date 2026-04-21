@@ -31,25 +31,38 @@ export default function Payments() {
     loadTransactions();
   }, []);
 
-  const totals = useMemo(() => {
-    const parseAmount = (raw) => {
-      if (typeof raw === 'number') return raw;
-      if (typeof raw !== 'string') return 0;
-      const cleaned = raw.replace(/[^\d.]/g, '');
-      const parsed = Number(cleaned);
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
+  const toDisplayAmount = (tx) => {
+    if (Number.isFinite(Number(tx?.amount))) return Number(tx.amount);
+    if (Number.isFinite(Number(tx?.amountLKR))) return Number(tx.amountLKR);
+    if (Number.isFinite(Number(tx?.amountCents))) return Number(tx.amountCents) / 100;
+    return 0;
+  };
 
+  const totals = useMemo(() => {
     const spent = transactions
       .filter((t) => String(t?.status || '').toUpperCase() === 'COMPLETED')
-      .reduce((sum, t) => sum + parseAmount(t?.amount), 0);
+      .reduce((sum, t) => sum + toDisplayAmount(t), 0);
 
     const unpaid = transactions
       .filter((t) => String(t?.status || '').toUpperCase() !== 'COMPLETED')
-      .reduce((sum, t) => sum + parseAmount(t?.amount), 0);
+      .reduce((sum, t) => sum + toDisplayAmount(t), 0);
 
     return { spent, unpaid };
   }, [transactions]);
+
+  const resolveTitle = (tx) => {
+    if (tx?.type || tx?.category) return tx.type || tx.category;
+    if (tx?.consultationId) return `Consultation ${String(tx.consultationId).slice(-8).toUpperCase()}`;
+    return 'Payment Transaction';
+  };
+
+  const resolveMeta = (tx) => {
+    const parts = [];
+    if (tx?.patientId) parts.push(`Patient: ${tx.patientId}`);
+    if (tx?.doctorId) parts.push(`Doctor: ${tx.doctorId}`);
+    if (tx?.customerEmail) parts.push(tx.customerEmail);
+    return parts.length > 0 ? parts.join(' • ') : 'N/A';
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -126,14 +139,14 @@ export default function Payments() {
                       <ShoppingBagIcon className="h-5 w-5 text-[#182C61] group-hover:text-white transition-colors" />
                     </div>
                     <div>
-                      <p className="font-black text-[#182C61] text-base leading-none">{tx.type || tx.category || 'Transaction'}</p>
+                      <p className="font-black text-[#182C61] text-base leading-none">{resolveTitle(tx)}</p>
                       <p className="text-[9px] font-bold text-[#808e9b] mt-1.5 uppercase tracking-widest">
-                        {(tx.doctor || tx.provider || tx.description || 'N/A')} • {tx.date ? tx.date : new Date(tx.createdAt || Date.now()).toLocaleDateString()}
+                        {resolveMeta(tx)} • {tx.date ? tx.date : new Date(tx.createdAt || Date.now()).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-black text-lg text-[#182C61] tracking-tighter leading-none">LKR {tx.amount || 0}</p>
+                    <p className="font-black text-lg text-[#182C61] tracking-tighter leading-none">LKR {toDisplayAmount(tx).toLocaleString()}</p>
                     <div className="flex items-center justify-end space-x-1.5 mt-1.5">
                        <CheckCircleIcon className={`h-3 w-3 ${String(tx.status || '').toUpperCase() === 'COMPLETED' ? 'text-[#eb2f06]' : 'text-amber-500'}`} />
                        <span className="text-[9px] font-black text-[#808e9b] uppercase tracking-widest">{tx.status || (idx === 0 ? 'Completed' : 'Pending')}</span>

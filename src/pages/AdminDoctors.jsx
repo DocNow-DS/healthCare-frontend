@@ -275,7 +275,10 @@ export default function AdminDoctors() {
           <p className="mt-2 text-[#808e9b]">Manage and monitor all doctors on the platform</p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => {
+            resetAddDoctorForm();
+            setShowAddModal(true);
+          }}
           className="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 bg-[#182C61] text-white text-sm font-black rounded-xl hover:bg-[#2a3d7a] transition-colors"
         >
           <UserPlusIcon className="h-5 w-5 mr-2" />

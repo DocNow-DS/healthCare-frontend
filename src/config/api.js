@@ -198,6 +198,9 @@ export const API = {
     }),
     getReports: () => apiClient(`${services.patient}/api/patient/reports`),
     getReportsByPatientId: (id) => apiClient(`${services.patient}/api/patient/${encodeURIComponent(String(id))}/reports`),
+    deleteReport: (id) => apiClient(`${services.patient}/api/patient/reports/${encodeURIComponent(String(id))}`, {
+      method: 'DELETE',
+    }),
     uploadReport: (file, description = '') => {
       const formData = new FormData();
       formData.append('file', file);
@@ -218,18 +221,28 @@ export const API = {
     getById: (id) => apiClient(`${services.doctor}/api/doctors/${id}`),
     getByEmail: (email) => apiClient(`${services.doctor}/api/doctors/email/${email}`),
     getBySpecialization: (specialization) => apiClient(`${services.doctor}/api/doctors/specialization/${specialization}`),
-    update: (id, data) => apiClient(`${services.doctor}/api/doctors/${id}`, {
+    // Doctor profile updates are handled by patient-management auth user update endpoint.
+    update: (id, data) => apiClient(`${services.patient}/api/auth/users/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
-    delete: (id) => apiClient(`${services.doctor}/api/doctors/${id}`, {
+    // Hard delete doctor user via admin endpoint.
+    delete: (id) => apiClient(`${services.patient}/api/admin/users/${id}`, {
       method: 'DELETE',
     }),
-    verify: (id) => apiClient(`${services.doctor}/api/doctors/${id}/verify`, {
-      method: 'POST',
+    // Mark doctor as verified in user profile document.
+    verify: (id) => apiClient(`${services.patient}/api/auth/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ isVerified: true }),
     }),
-    toggleStatus: (id) => apiClient(`${services.doctor}/api/doctors/${id}/toggle-status`, {
-      method: 'POST',
+    // Toggle enabled status via admin endpoint. Requires email and roles to avoid null overwrite.
+    toggleStatus: (id, doctor) => apiClient(`${services.patient}/api/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        email: doctor?.email,
+        roles: ['DOCTOR'],
+        enabled: !(doctor?.status === 'active'),
+      }),
     }),
     getMyProfile: () => apiClient(`${services.doctor}/api/doctors/me`),
     updateMyProfile: (data) => apiClient(`${services.doctor}/api/doctors/me`, {
@@ -288,7 +301,7 @@ export const API = {
     deleteUser: (id) => apiClient(`${services.patient}/api/admin/users/${id}`, {
       method: 'DELETE',
     }),
-    getTransactions: () => apiClient(`${services.patient}/api/admin/transactions`),
+    getTransactions: () => apiClient(`${services.payment}/api/v1/payments/admin/all`),
   },
 
   telemedicine: {
